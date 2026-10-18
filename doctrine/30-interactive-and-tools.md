@@ -42,6 +42,12 @@ Doctrine:
   **Never invert this.** Injecting an SSH key / `authorized_keys` and hammering `ssh`, or tuning `ssh`
   client options (KEX/cipher/MAC), on a channel you have **not** confirmed reachable is blind guessing
   and pure wasted motion — persistence (SSH) comes *after* a shell is confirmed working, never before.
+- **Pace actions against the target — a flood can DoS the box and break your own access.** Varying the
+  payload is **not** a license to fire in bulk: a burst of heavy or repeated actions against one
+  endpoint (queued jobs, requests, brute attempts) can starve or crash the target, after which your own
+  shells / `ssh` / probes hang — a self-inflicted wall that *looks* like the box being hard. One action
+  → verify → next. If commands suddenly hang across the board, suspect you (or a reset) took the box
+  down — check `target_health.md` before blaming the vector.
 - **For a reverse-shell catcher, prefer `pwncat-cs -lp <port>` WHEN IT RUNS, else fall back to
   `nc -lvnp <port>` + a manual PTY upgrade.** pwncat (in the project venv — `scripts/setup_env.sh`) adds
   PTY auto-upgrade, a stable prompt, a synchronous command API, and **reconnect + persistence**. But treat

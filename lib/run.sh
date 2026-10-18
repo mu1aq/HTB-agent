@@ -150,9 +150,11 @@ rc2_build_prompt() {
   printf '%s' "You are redcat2, hunting the authorized lab machine ${machine_name:-$target_ip} at \
 target_ip=$target_ip (os=${os_hint:-unknown}, difficulty=${difficulty:-unknown}). Your cwd is this \
 box's run dir; all paths relative. Your memory is worldmodel.md, hypotheses.md, journal.md — READ ALL \
-THREE FIRST (they may already hold progress from a prior session; continue, do not restart), then run \
-the Hunt Loop from your system prompt until user.txt AND root.txt are captured and VERIFIED, keeping \
-the three files current every loop. Long/interactive commands go in tmux session '$RC2_TMUX' (extra: \
+THREE FIRST (they may already hold progress from a prior session; continue, do not restart); also read \
+recall.md — if it names a VERIFIED PRIOR SOLVE of this box, re-walk that chain to the flag before \
+deriving anything, and do NOT adopt a failed prior run's blocker as a lead. Then run the Hunt Loop from \
+your system prompt until user.txt AND root.txt are captured and VERIFIED, keeping the three files \
+current every loop. Long/interactive commands go in tmux session '$RC2_TMUX' (extra: \
 ${tmux_base}_<slug>). Wordlists at \$SECLISTS=$SECLISTS. The moment you read a real flag, append \
 user=<hex> or root=<hex> to flags.txt AND emit <FLAG><hex></FLAG> (a watcher auto-submits). Act ONLY \
 against $target_ip. $NOTES"
@@ -434,7 +436,7 @@ rc2_write_recall() {
   # distinctive tokens from the "Services & versions" section (drop generic noise so it doesn't match all)
   local toks; toks="$(sed -n '/## Services/,/^## /p' "$wm" 2>/dev/null \
     | grep -oiE '[a-z][a-z0-9._-]{2,}' | tr 'A-Z' 'a-z' \
-    | grep -vExF -e tcp -e udp -e the -e and -e with -e open -e port -e http -e https -e version -e service -e server -e linux -e ubuntu -e debian -e windows \
+    | grep -vxF -e tcp -e udp -e the -e and -e with -e open -e port -e http -e https -e version -e service -e server -e linux -e ubuntu -e debian -e windows \
     | sort -u | head -12 | paste -sd'|' -)"
   [ -n "$toks" ] || return 0
   local hits; hits="$("$RC2_ROOT/scripts/rag.sh" "$toks" 2>/dev/null | grep -v "/runs/$slug/" | head -40)"
