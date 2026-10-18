@@ -14,8 +14,12 @@ rc2_load_env() {
   # 3.11 venv (that would break the solver's own scripts: boto3/impacket/pwntools import under the venv).
   # scripts/setup_env.sh populates .venv/exposed with symlinks to just those tools.
   [ -d "$RC2_ROOT/.venv/exposed" ] && export PATH="$RC2_ROOT/.venv/exposed:$PATH"
-  # SecLists: honour SECLISTS_DIR from env, else common location.
-  export SECLISTS="${SECLISTS:-${SECLISTS_DIR:-$HOME/files_etc/SecLists}}"
+  # SecLists: prefer an in-folder vendor/ copy (self-contained), then explicit SECLISTS_DIR, then the
+  # shared external tree. scripts/vendor.sh populates vendor/ (symlink by default, --copy to internalize).
+  if [ -z "${SECLISTS:-}" ]; then
+    if [ -e "$RC2_ROOT/vendor/SecLists" ]; then SECLISTS="$RC2_ROOT/vendor/SecLists"
+    else SECLISTS="${SECLISTS_DIR:-$HOME/files_etc/SecLists}"; fi
+  fi
   export SECLISTS="${SECLISTS/#\~/$HOME}"
   # HTB API client (bundled, sourceable). Non-fatal if absent — IP-only mode still works.
   if [ -f "$RC2_ROOT/scripts/lib/htb_api.sh" ]; then . "$RC2_ROOT/scripts/lib/htb_api.sh"; RC2_HTB=1; else RC2_HTB=0; fi

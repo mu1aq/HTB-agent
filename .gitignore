@@ -21,3 +21,6 @@ reversing/
 
 # eval: generated per-machine scorecard (baseline.json IS committed)
 eval/scorecard.json
+
+# vendor: in-folder external data (SecLists etc.) — symlinked/copied locally, never committed
+vendor/

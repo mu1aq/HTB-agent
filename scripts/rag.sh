@@ -24,8 +24,11 @@ if [ -n "${SCOPE:-}" ]; then paths+=("$ROOT/$SCOPE")
 else
   paths+=("$ROOT/runs")
   if [ "$WITH_PAYLOADS" -eq 1 ]; then
-    paths+=("$ROOT/reference")                                                   # redcat2's own surface-signals reference
-    paths+=("$HOME/files_etc/PayloadsAllTheThings" "$HOME/files_etc/GTFOBins")   # shared external refs (NOT SecLists — too large)
+    paths+=("$ROOT/reference")                                                   # the repo's own surface-signals reference
+    # prefer in-folder vendor/ (self-contained), fall back to the shared external tree (scripts/vendor.sh populates vendor/)
+    for ref in PayloadsAllTheThings GTFOBins; do
+      if [ -e "$ROOT/vendor/$ref" ]; then paths+=("$ROOT/vendor/$ref"); else paths+=("$HOME/files_etc/$ref"); fi
+    done
   fi
 fi
 real=(); for p in "${paths[@]}"; do [ -e "$p" ] && real+=("$p"); done

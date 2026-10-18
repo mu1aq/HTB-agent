@@ -21,7 +21,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OPT_DIR="/opt"                       # git-cloned tools live here (Kali convention)
 GOBIN_DIR=""                         # resolved at runtime by detect_bindir() — never hardcoded
-FILES_ETC="${FILES_ETC:-$HOME/files_etc}"   # extra tools/resources git-cloned here (max mode)
+FILES_ETC="${FILES_ETC:-$ROOT/vendor}"   # data refs (SecLists/Payloads/GTFOBins) git-cloned IN-FOLDER by default; set FILES_ETC=~/files_etc for the old shared tree
 FAILED=()                            # collected non-fatal failures, printed at the end
 
 c_ok()   { printf '\033[32m  ok  \033[0m %s\n' "$*"; }
@@ -87,8 +87,8 @@ declare -A GIT_REPOS=(
   ["https://github.com/initstring/cloud_enum"]="cloud_enum"
 )
 
-# wordlists: SecLists via git clone into the user's home (no apt/sudo), not /usr/share
-SECLISTS_DIR="${SECLISTS_DIR:-$HOME/files_etc/SecLists}"
+# wordlists: SecLists via git clone IN-FOLDER (no apt/sudo), not /usr/share
+SECLISTS_DIR="${SECLISTS_DIR:-$FILES_ETC/SecLists}"
 SECLISTS_DIR="${SECLISTS_DIR/#\~/$HOME}"   # expand a literal leading ~
 
 # MAX mode: extra HTB-useful resources not in apt — git-cloned into $FILES_ETC.

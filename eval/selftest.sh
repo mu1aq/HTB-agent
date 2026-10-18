@@ -58,6 +58,17 @@ path_clobber="$(grep -rnE '(^|[^A-Za-z_])PATH=' hunt lib scripts 2>/dev/null \
   | grep -v '\$PATH' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#')"
 assert_empty "no PATH assignment clobbers \$PATH (prepend/append only)" "clobbering PATH=" "$path_clobber"
 
+# the in-folder CLI dir (.venv/exposed, prepended to PATH) must not symlink OUT of the repo —
+# a cp from redcatN left pwncat-cs pointing back into redcatN's venv. Self-containment invariant.
+exposed_out=""
+if [ -d .venv/exposed ]; then
+  for l in .venv/exposed/*; do
+    [ -L "$l" ] || continue
+    case "$(readlink -f "$l" 2>/dev/null)" in "$RC2_ROOT"/*) ;; *) exposed_out+="$l->$(readlink "$l") ";; esac
+  done
+fi
+assert_empty ".venv/exposed CLI symlinks resolve inside the repo" "points outside" "$exposed_out"
+
 # ── 3. DOCTRINE — the system prompt. Present, ordered, byte-stable, general ──
 echo
 echo "[doctrine]"

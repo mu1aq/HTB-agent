@@ -121,10 +121,15 @@ relative paths):
   extractor + validator, called by `rc2_ensure_htb_token`. Drop HARs in `redcat2/har/`.
 - **`scripts/conv_fmt.py`** — pretty-renders the stream-json log (falls back to raw `cat`).
 
-The only external resource is **SecLists** at `$SECLISTS` (default `~/files_etc/SecLists`), a
-shared wordlist tree that is not part of any project. If the HTB API/token is absent,
-`./hunt <ip>` still works in IP-only mode (no spawn/submit). Deleting `/home/kali/redcat` does
-not affect redcat2.
+**Self-contained data via `vendor/`.** The repo's only runtime data deps are wordlists/refs
+(SecLists, PayloadsAllTheThings, GTFOBins). `env.sh`/`rag.sh`/`install_tools.sh` **prefer an
+in-folder `vendor/<name>`** and fall back to the shared `~/files_etc/<name>` tree only if it is
+absent — so `scripts/vendor.sh` (symlink by default, `--copy` to truly internalize; `--status`
+to inspect) is what makes a hunt run folder-local. `vendor/` is gitignored (data, often huge).
+What remains genuinely external is the OS/toolchain (nmap, tmux, gdb, the Go/Python toolchain,
+the `claude` CLI), licensed apps (IDA, Burp), cloud creds (`~/.aws`), and the HAR import
+(`$HAR_SRC`, a Windows path by nature) — see `eval/README.md`/this file's audit. If the HTB
+API/token is absent, `./hunt <ip>` still works in IP-only mode (no spawn/submit).
 
 ## Terminals: tmux (the only session layer)
 
