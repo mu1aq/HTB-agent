@@ -1,0 +1,11 @@
+{
+  "_comment": "The fixed evaluation box set. `expect`: 'solved' = this agent has demonstrably solved it end-to-end at least once, so it must stay solvable (a drop is a regression); 'unknown' = not yet solved, scored for information only. `crux`: the decisive skill/step, for reading where a run died. Add a box by appending a row AND recording one real run under runs/<name>/. Seeded 2026-10-18 from the existing runs.",
+  "boxes": [
+    { "name": "Touch",          "difficulty": "Easy",   "expect": "solved",  "crux": "" },
+    { "name": "management",     "difficulty": "Easy",   "expect": "solved",  "crux": "" },
+    { "name": "MakeSense",      "difficulty": "Medium", "expect": "solved",  "crux": "" },
+    { "name": "Stream",         "difficulty": "Medium", "expect": "solved",  "crux": "" },
+    { "name": "Nimbus",         "difficulty": "Hard",   "expect": "solved",  "crux": "SQS SendMessage: SigV4 signing + exact queue-name/URL format — a mechanical request-shaping step, not a vector choice" },
+    { "name": "DarkZeroReturns", "difficulty": "Hard",  "expect": "unknown", "crux": "" }
+  ]
+}

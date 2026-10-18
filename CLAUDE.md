@@ -146,6 +146,13 @@ tmux is zero-dependency and lives in the agent's shell env, so everything runs o
 
 - **Doctrine drives behavior.** Prefer editing `doctrine/*.md` over hardcoding steps in the
   launcher. The launcher is plumbing; the doctrine is policy.
+- **Measurement gates change (`eval/`).** Before touching `lib/`, `hunt`, `doctrine/`, or
+  `.claude/agents/`, run `eval/selftest.sh` — fast, no-network wiring invariants (PATH is never
+  clobbered, doctrine builds in order + byte-stable + no hardcoded cross-repo paths, the three
+  living files seed non-empty, the opus→4.8 pin holds). After a hunt, `python3 eval/score.py`
+  scores the fixed box set (`eval/boxset.json`) against `eval/baseline.json` and exits non-zero on
+  a `solved→failed` regression. New governance/doctrine **mechanisms stay frozen until the eval
+  shows they help** — this is deliberate; see `eval/README.md` (incl. the deferred C/D/E backlog).
 - **Evidence discipline.** The doctrine forbids recording unverified wins and forbids grinding
   (per-hypothesis evidence budgets → freeze + switch). Preserve this when editing — it is the
   main defense against the rabbit holes Insane boxes are built from.

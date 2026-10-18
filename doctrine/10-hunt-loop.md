@@ -52,7 +52,7 @@ pass and why**. Choose it by expected value, not by habit:
   a target as "dead" until you have ruled out that its real surface simply isn't raw ports.
   This is the same epistemic loop, applied to discovering the surface class. When you spot a
   **generalizable** fingerprint (one that would mean the same on another box), consult — and,
-  once confirmed, extend — `/home/kali/redcat2/reference/surface-signals.md` (observation →
+  once confirmed, extend — `reference/surface-signals.md` (observation →
   environment → direction only; never a step list — keep it a pointer, not a playbook).
 - **Opening reflexes (defaults, not a recipe).** Two moves that are almost always the right
   first look — do them by default and only skip with a reason:
@@ -70,79 +70,45 @@ pass and why**. Choose it by expected value, not by habit:
     is the whole default; how you then enumerate is an ORIENT decision from evidence, not a fixed
     next step.
 
-- **Orient by the privilege delta — the master question.** A box is a ladder of privilege
-  levels, and a flag falls only when you **cross into something that runs at a higher privilege
-  than you do now**. So keep a **privilege map** (in `worldmodel.md`, per `40-memory-and-state.md`):
-  every principal / process / service / container you know of, the privilege it runs at
-  (uid, caps, host access, trust, the secrets and actions it holds), and — for *your current*
-  principal — what you can and cannot do. Then the question that drives ORIENT, especially when
-  no attack hypothesis is strong, is not "what's vulnerable here" but **"what here runs more
-  privileged than me, and does any input I control reach it?"** Chase that seam **across every
-  domain at once** — web, service/API, binary/SUID, credential, container, network, file — not
-  only the domain you are standing in; the elevation is often in a domain you haven't looked at.
-  A concrete recon action for this: **search configs, API fields, source, and docs for
-  privilege-granting strings** (`privileged`, `root`, `sudo`, `setuid`/`setgid`, `CAP_`, `host`,
-  `mount`, `admin`, `run-as`, `trust`), rank what turns up as elevation candidates, and test the
-  cheapest. A component is **"closed" only once you have shown it can *neither* run at a higher
-  privilege than you *nor* consume input you control** — "it looks like a mock/stub", "the easy
-  escape didn't fire", or "I didn't see a bind-mount" is **not** closed (see `00` → evidence of
-  absence, and `40` → how to record a negative).
+- **Orient by the privilege delta — the master question.** A box is a ladder of privilege levels, and a
+  flag falls only when you **cross into something that runs at a higher privilege than you do now**. Keep a
+  **privilege map** in `worldmodel.md` (per `40`): every principal / process / service / container you know
+  of, the privilege it runs at (uid, caps, host access, trust, the secrets and actions it holds), and — for
+  *your current* principal — what you can and cannot do. The question that drives ORIENT, especially when no
+  attack hypothesis is strong, is not "what's vulnerable here" but **"what here runs more privileged than me,
+  and does any input I control reach it?"** Chase that seam **across every domain at once** — web, service/
+  API, binary, credential, container, network, file — not only the one you are standing in; the elevation is
+  often in a domain you haven't looked at. A cheap recon move: grep configs, API fields, source, and docs for
+  privilege-granting strings (`privileged`, `root`, `sudo`, `setuid`, `CAP_`, `host`, `mount`, `admin`,
+  `run-as`, `trust`), rank the hits, test the cheapest. A component is **"closed" only once you have shown it
+  can *neither* run above you *nor* consume input you control** — "looks like a mock", "the easy escape didn't
+  fire", "I didn't see a bind-mount" is **not** closed (`00` → evidence of absence; `40` → recording a negative).
 
-- **Reason from the artifact, not from the catalog — the target is ground truth, your prior is a
-  guess.** When you decide what is *available* here — which image is cached, which binary is on the
-  box, what a service accepts, which version is running, what a config permits — your evidence
-  ranks **what this target actually reveals** *above* "systems like this usually have X". They
-  conflict more often than you expect, and when they do, **the observation wins.** This matters most
-  when the thing in front of you is a **named fork, a modified product, or a custom build**: the
-  customization *is* the attack surface. The delta from the stock product is exactly where your
-  catalog knowledge goes stale **and** where the intended path usually lives — a custom name, env
-  prefix, or banner is a signal pointing *at* that delta, not background to skim past. So before you
-  reach for the standard playbook for a category, ask what **this** instance makes available: *what
-  must exist on this host because it is already running it? what does this fork's name / env / error
-  text tell me? what, already here, can I reuse?* The surest-cached image is the one the box itself
-  runs; the surest-present binary is the one already on a box you hold. Sweeping the generic list
-  (and concluding "none work") while never trying the target's own namesake is the classic miss.
-- **Reflex: enumerate a new context openly before judging it a dead end.** Whenever you land in a new
-  execution context — a shell, a container, a service you can run code in, a new principal — spend one
-  honest pass asking *what is actually here and what does it reach*: devices, caps, mounts, env, writable
-  paths, neighbours, and above all the **privilege it runs at** — **before** you conclude "nothing here".
-  This is a disciplined habit, not a checklist and not a hard gate: its value is noticing the primitive
-  you *weren't* looking for (a writable path a higher-privileged process trusts, a capability or token
-  you did not expect, a service or account running above you) that a checklist of escapes you already
-  know would skip past.
-  **Checking for the one primitive you came hoping to find — a specific socket, a bind-mount, a
-  particular vulnerable binary — is NOT enumeration; it is confirming a *want*.** Enumerate what is
-  *actually present* (on Linux: `ls -la /dev`, `capsh --print`, `mount`, `/proc/self/status`, env,
-  writable paths, neighbours; on Windows: `whoami /all`, token privileges, service/registry ACLs,
-  shares, scheduled tasks) and let the inventory pick the primitive. If you came in wanting one specific
-  primitive and your own evidence already says it is absent, the move is not to keep trying to produce
-  it — it is to list what *is* there and escalate with that. Catching yourself write off a context after
-  testing only the escape you had in mind is the signal to do this.
-- **Crossing into a higher-privilege context *is* most of the win — the next primitive is usually already
-  inside it, so inventory the context before you try to leave it by the door you came for.** "Higher
-  privilege" is tech-agnostic: a more powerful account or role, a process / service / scheduled job running
-  as someone above you, a container / VM / sandbox, a SUID or token or session you just assumed. You have
-  climbed a rung of the privilege ladder (`worldmodel.md` → privilege map), so **re-orient from the new
-  vantage** rather than firing the one escape you planned on the way in. Ask, in whatever form the
-  technology takes: *who am I now and what do I hold* — identity, groups/role, privileges/capabilities,
-  integrity/trust level; *what runs alongside me more privileged than me, and does any input I control
-  reach it* — the other processes/services/jobs here, their owners, and the files/sockets/queues/arguments/
-  secrets they consume that I can write or influence; *what does this context reach that I could not before*
-  — filesystems, other hosts, credentials, networks, APIs. Let the inventory choose the primitive. *How* you
-  take that inventory is environment-specific and is **not** a fixed list — on a Unix host `id`/`ps`/
-  `/proc/*/status`/`capsh`/`mount`; on Windows `whoami /all`/`tasklist`/service & token privileges; for a
-  database or cloud role, its grants and what they unlock — but the three questions are the same everywhere.
-  The higher-privilege crossing is the moment that reflex matters most: spend the vantage, don't waste it
-  re-trying the one door you came for.
-- **A higher-privilege context that is short-lived, one-shot, or unstable is a *delivery* constraint, not a
-  dead end.** Whether it runs once and exits, is rebuilt on each invocation, or drops on a timeout/error, the
-  context is **not** closed — you simply get one shot, so **shrink the plan to fit one shot**: a single
-  self-contained *inventory-then-act* that reports its findings back to you, instead of a persistent
-  interactive foothold you hold open and explore by hand. One clean shot in a higher-privilege context beats
-  a hundred retries aimed at producing a persistent handle, or the one primitive your own evidence already
-  says is absent. "I can't hold it long enough to do what I planned" means **change what you planned**, never
-  abandon the context — and never bank it as a blocker (`00` → Done: a shallow higher-privilege dismissal is
-  exactly what the surrender gate re-opens).
+- **Reason from the artifact, not from the catalog — the target is ground truth, your prior is a guess.**
+  When you decide what is *available* here — which image is cached, which binary is on the box, what a service
+  accepts, which version runs, what a config permits — rank **what this target actually reveals** *above*
+  "systems like this usually have X"; when they conflict, **the observation wins.** This matters most with a
+  **named fork, modified product, or custom build**: the customization *is* the attack surface, and a custom
+  name / env / banner is a signal pointing *at* that delta, not noise to skim past. Before reaching for the
+  standard playbook, ask what **this** instance makes available — what must exist because it is already running
+  it, what the fork's name/error text tells you, what already here you can reuse. Sweeping the generic list
+  while never trying the target's own namesake is the classic miss.
+
+- **When you enter a new or higher-privilege context, inventory what is *actually there* before you leave by
+  the door you came for.** A shell, container, new principal, a role / token / session you just gained —
+  crossing into it *is* most of the win, and the next primitive is usually already inside, so re-orient from
+  the new vantage instead of firing the one escape you planned. Ask, in whatever form the tech takes: *who am
+  I now and what do I hold* (identity, role, caps, trust); *what runs alongside me more privileged, and does
+  any input I control reach it* (its files / sockets / args / secrets I can write); *what does this context
+  reach that I could not before* (filesystems, hosts, creds, networks, APIs). **Checking for the one primitive
+  you hoped to find is not enumeration — it is confirming a *want*;** enumerate what is *present* (Unix:
+  `id`/`ps`/`/proc/*/status`/`capsh`/`mount`/writable paths; Windows: `whoami /all`/tokens/service & registry
+  ACLs/tasks; a DB or cloud role: its grants — examples, not a fixed list) and let the inventory choose the
+  primitive. If the context is **short-lived, one-shot, or unstable, that is a *delivery* constraint, not a
+  dead end**: shrink the plan to a single self-contained *inventory-then-act* that reports back, not a
+  persistent foothold — one clean shot beats a hundred retries for a handle. "I can't hold it long enough"
+  means **change the plan, not abandon the context** (`00` → Done; a shallow higher-privilege dismissal is
+  what the surrender gate re-opens).
 
 If no hypothesis has meaningful confidence, your ORIENT output is "I lack information"
 and the pass becomes an enumeration/observation pass, not an attack.
