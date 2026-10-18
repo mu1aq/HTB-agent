@@ -78,6 +78,15 @@ thing a fresh instance reads to understand *why* the board looks the way it does
 rewrite history here — append. **Timestamp every entry in UTC** (`date -u +%FT%TZ`) so the
 journal, the tool logs, and the retrospectives all share one clock.
 
+**This is non-negotiable, not paperwork — and it is the FIRST thing to slip when you get absorbed in a
+vector.** A relaunch (context overflow is routine on a long box) resumes from this file; **a journal that
+is empty or frozen while you ran twenty actions means the next instance wakes up nearly blind and burns a
+window re-deriving what you already knew.** So append **at the close of every loop** — *before* you start
+the next ORIENT — and always right after: a VERIFY-confirmed win, a hypothesis freeze/pivot, or applying a
+supervisor/auditor tick. If you cannot point to a new journal line in the last handful of actions, you have
+drifted from the loop — stop and write it now. The harness will nudge you (`RC2_JOURNAL_STALL`) if the
+journal goes stale while actions keep firing; treat that nudge as a hard stop-and-append, not a suggestion.
+
 ### `ledger.json` — the machine-readable mirror (the harness enforces on THIS)
 
 `hypotheses.md` is the human view; `ledger.json` is the same state in a form the harness can read and
