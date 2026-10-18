@@ -23,6 +23,14 @@ uv venv --python 3.11 .venv --clear    # uv fetches a managed 3.11 if the host l
 echo "[setup] installing interactive tooling (pwncat-cs, pexpect, setuptools<81, requests) ..."
 VIRTUAL_ENV="$ROOT/.venv" uv pip install pwncat-cs pexpect requests 'setuptools<81'
 
+# Expose ONLY the CLI tools we want on PATH (pwncat-cs), via a dedicated dir — NOT the whole .venv/bin,
+# which would put the venv's `python`/`pip` ahead of system python and break the solver's own scripts
+# (boto3/impacket/pwntools live in system python, not this minimal venv). lib/env.sh prepends .venv/exposed.
+echo "[setup] exposing CLI tools (pwncat-cs) without shadowing system python ..."
+mkdir -p "$ROOT/.venv/exposed"
+rm -f "$ROOT/.venv/exposed/pwncat-cs"
+ln -s "$ROOT/.venv/bin/pwncat-cs" "$ROOT/.venv/exposed/pwncat-cs"
+
 echo "[setup] self-test: pwncat-cs imports?"
 if "$ROOT/.venv/bin/pwncat-cs" --version >/dev/null 2>&1; then
   echo "[setup] OK — pwncat-cs runs ($("$ROOT/.venv/bin/pwncat-cs" --version 2>&1 | head -1))"
