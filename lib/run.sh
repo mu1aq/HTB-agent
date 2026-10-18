@@ -438,11 +438,45 @@ rc2_write_recall() {
     | sort -u | head -12 | paste -sd'|' -)"
   [ -n "$toks" ] || return 0
   local hits; hits="$("$RC2_ROOT/scripts/rag.sh" "$toks" 2>/dev/null | grep -v "/runs/$slug/" | head -40)"
+  # ── #1: a PRIOR SOLVE of THIS box is a verified chain to re-walk FIRST, not loose intel. Rank sibling
+  # runs of the same base slug by outcome so the solver follows the solved confirmed_path and does NOT
+  # inherit a FAILED run's blocker/"give up" note as a lead (the exact trap: chasing a dead-run red herring).
+  local base; base="$(printf '%s' "$slug" | sed -E 's/\.bak\.[0-9]+$//')"
+  local solved_block failed_list
+  solved_block="$(RC2_ROOT="$RC2_ROOT" base="$base" self="$slug" python3 - <<'PY' 2>/dev/null
+import json,glob,os
+root=os.environ["RC2_ROOT"]; base=os.environ["base"]; self=os.environ["self"]
+solved=[]; dead=[]
+for fa in sorted(glob.glob(f"{root}/runs/{base}*/failure_analysis.json")):
+    d=os.path.dirname(fa)
+    if os.path.basename(d)==self: continue
+    try: oc=json.load(open(fa)).get("outcome")
+    except: continue
+    if oc=="solved":
+        try: cp=json.load(open(f"{d}/ledger.json")).get("confirmed_path",[])
+        except: cp=[]
+        solved.append((os.path.basename(d),cp))
+    elif oc in ("failed","partial"): dead.append(os.path.basename(d))
+if solved:
+    print("## ✅ VERIFIED PRIOR SOLVE of this box — RE-WALK THIS CHAIN FIRST")
+    print("> This box was solved before. Re-execute these proven steps against the LIVE instance FIRST")
+    print("> (adapt rotated creds/IDs), verifying each `yields`, BEFORE deriving anything new. Only a step")
+    print("> that genuinely fails is re-derived. Do NOT chase a different path while this is unwalked.")
+    for name,cp in solved:
+        print(f"\n### from {name}")
+        for e in cp:
+            print(f"- STEP: {e.get('summary','')}")
+            if e.get('how'):    print(f"    how:    {e['how']}")
+            if e.get('yields'): print(f"    yields: {e['yields']}")
+    if dead: print(f"\n⚠ prior runs that did NOT solve it ({', '.join(dead)}): their blockers / \"give up\" notes are recorded DEAD ENDS, not leads — do not inherit them as hypotheses.")
+PY
+)"
   {
-    echo "# recall — cross-run hits for this box's tech (auto; speed lever #5 — do not hand-edit)"
+    echo "# recall — cross-run memory for this box (auto; speed lever #5 — do not hand-edit)"
     echo "_updated $(rc2_utc) · query: ${toks}_"
-    echo "> past runs that touched the same service/tech, and what worked or died there. Jump to a known"
-    echo "> path instead of re-deriving it; a recorded dead end is a negative you can skip. (See doctrine 20.)"
+    if [ -n "$solved_block" ]; then printf '%s\n\n' "$solved_block"; fi
+    echo "## tech hits (other runs that touched the same service/tech — what worked or died)"
+    echo "> Jump to a known path instead of re-deriving; a recorded dead end is a negative you can skip. (doctrine 20.)"
     echo
     if [ -n "$hits" ]; then printf '%s\n' "$hits"; else echo "(no prior run has touched this tech yet)"; fi
   } > "$out" 2>/dev/null || true
