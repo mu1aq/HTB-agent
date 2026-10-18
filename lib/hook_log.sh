@@ -199,6 +199,20 @@ rc2_guard_pre() {
     fi
   fi
 
+  # journal-staleness nudge — ALWAYS on, independent of GUARD_MODE (the journal is memory discipline, not
+  # guard enforcement, and it matters most exactly when the guard is off). The decision trail is what a
+  # relaunch resumes from; an empty/stale journal across many actions = a near-blind resume. Warn (never
+  # block) when too many experiments have passed with no journal.md change. Fail-open.
+  local jl jl0 je0 jstall="${RC2_JOURNAL_STALL:-15}"
+  jl="$(wc -l < "$cwd/journal.md" 2>/dev/null | tr -d ' ')"; jl="${jl:-0}"
+  jl0="$(jq -r '.journal.lines // -1' "$ACCT" 2>/dev/null)"
+  je0="$(jq -r '.journal.exp // 0' "$ACCT" 2>/dev/null)"
+  if [ "$jl" != "$jl0" ]; then
+    rc2_json_update "$ACCT" '.journal.lines=$l | .journal.exp=$e' --argjson l "${jl:-0}" --argjson e "${exp:-0}"
+  elif [ "$((exp - je0))" -ge "$jstall" ] 2>/dev/null; then
+    echo "redcat2 journal: $((exp - je0)) experiments since your last journal.md entry (threshold $jstall). The journal is how a relaunch resumes — append a terse entry NOW (hypothesis advanced · experiment · result · next move), then continue. An empty/stale journal means a near-blind resume on the next context reset." >&2
+  fi
+
   # multi-label surface: _hook_surface emits a space-separated set, and EVERY label is incremented (so
   # .surfaces counts per-dimension effort; the totals intentionally exceed the action count).
   local surfs; surfs="$(_hook_surface "$(printf '%s' "$input" | jq -r '.tool_input.command // (.tool_name) // ""' 2>/dev/null)")"

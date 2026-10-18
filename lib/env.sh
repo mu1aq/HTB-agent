@@ -30,6 +30,7 @@ rc2_load_env() {
   : "${RC2_BUDGET_DEFAULT:=8}"     # per-hypothesis attempt budget seeded into ledger.json
   : "${RC2_REPEAT_FREEZE:=4}"      # identical-action repeats on one hypothesis before the hook warns/blocks
   : "${RC2_STALL:=12}"             # experiments on one hypothesis with no new evidence before the judge is asked
+  : "${RC2_JOURNAL_STALL:=15}"     # experiments with no journal.md change before the hook nudges to append (memory discipline; always-on)
   : "${RC2_GATE_N:=2}"             # consecutive same-focus rabbit-hole reviews before oversee raises the live mode
   : "${RC2_GATE_MODE:=block}"      # mode oversee escalates the live tier to on consensus
   : "${GUARD_WATCH_INTERVAL:=180}" # sameness-judge watcher cadence, seconds
@@ -37,7 +38,7 @@ rc2_load_env() {
                                    # so sonnet is fine here; only opus is capped at 4.8 (see rc2_pin_model).
   : "${RC2_SURRENDER_MAX:=2}"      # max times the surrender gate may re-open a blocker and relaunch
   : "${RC2_SURRENDER_MODEL:=claude-opus-4-8}" # surrender-gate re-audit: an opus reviewer, capped at 4.8 (never 5.x)
-  export RC2_CEIL RC2_WARN RC2_BUDGET_DEFAULT RC2_REPEAT_FREEZE RC2_STALL RC2_GATE_N RC2_GATE_MODE GUARD_WATCH_INTERVAL GUARD_JUDGE_MODEL RC2_SURRENDER_MAX RC2_SURRENDER_MODEL
+  export RC2_CEIL RC2_WARN RC2_BUDGET_DEFAULT RC2_REPEAT_FREEZE RC2_STALL RC2_JOURNAL_STALL RC2_GATE_N RC2_GATE_MODE GUARD_WATCH_INTERVAL GUARD_JUDGE_MODEL RC2_SURRENDER_MAX RC2_SURRENDER_MODEL
 
   # ── epistemic auditor (conclusiveness gate) — the "premature-surrender one layer deeper" defense ─
   # A periodic, independent opus reader of the RAW logs that judges whether a REFUTED/frozen high-impact
