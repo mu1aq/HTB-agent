@@ -85,6 +85,29 @@ assert_empty "all 7 doctrine files present and non-empty" "missing" "$missing"
 abs_paths="$(grep -rnE '/home/[^/]+/redcat[0-9]' doctrine/ 2>/dev/null)"
 assert_empty "doctrine has no hardcoded cross-repo absolute paths" "hardcoded path" "$abs_paths"
 
+# ── TRIPWIRE: failure-mode refs must stay epistemic, never drift into playbooks ──────
+# Governed by 00-prime-directive. Two lines (see refs/README.md):
+#  (1) a ref file must not name a target technique — CVE / msf module / per-service recipe;
+#  (2) a mode detector must key on a REASONING signal, never on the target.
+# Both pass trivially until refs/ + a MODES index exist; they bite the moment one drifts.
+ref_tech=""
+if [ -d refs ]; then
+  # scan refs/*.md EXCEPT README (which legitimately names the banned things to forbid them)
+  while IFS= read -r f; do
+    [ "$(basename "$f")" = "README.md" ] && continue
+    hit="$(grep -nEi 'CVE-[0-9]{4}-[0-9]+|(^|[^a-z])(use +)?(exploit|auxiliary|payload)/|multi/handler|msfconsole' "$f" 2>/dev/null)"
+    [ -n "$hit" ] && ref_tech+="$f: $(printf '%s' "$hit" | head -1)"$'\n'
+  done < <(find refs -maxdepth 1 -name '*.md' 2>/dev/null)
+fi
+assert_empty "refs/ name no target technique (CVE/msf/recipe)" "technique in a ref" "$ref_tech"
+
+# detector allowlist = signals about the solver's own reasoning process (NOT the target)
+SIGNALS='repeat|stall|inconclusive|untestable|journal|drift|breadth|decay|budget|ceiling|idle|surrender|grind|freeze|override|noprogress|no_progress|focus|consensus|repetition'
+bad_detector="$(grep -rhniE 'detector:[[:space:]]*[a-z_]+' doctrine/ refs/ 2>/dev/null \
+  | sed -E 's/.*detector:[[:space:]]*([a-z_]+).*/\1/I' \
+  | grep -viE "^($SIGNALS)$" || true)"
+assert_empty "every mode detector keys on a reasoning-signal (not the target)" "target-keyed detector" "$bad_detector"
+
 # Source the launcher so we can exercise the real builders. Syntax already checked.
 # shellcheck disable=SC1091
 if . lib/bootstrap.sh 2>/tmp/_src.$$; then

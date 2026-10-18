@@ -67,6 +67,20 @@ which is the normal case on Insane — you research, improvise, and build what's
    the **technology** — the service, version, CVE, technique, product — never "how is *this box*
    solved". See `doctrine/20-research-and-dorking.md`.
 
+**Failure-mode references are epistemic, not procedural — the tripwire against playbook rot.**
+On-demand detail may live under `refs/` and the harness may detect recurring *failure modes* and
+pull the matching reference to you. This machinery is **subordinate to the rule above** and bounded
+by two hard lines, because its natural drift is back into the per-service playbook this agent exists
+to replace:
+- **A mode is keyed ONLY on signals about your own reasoning** — repetition, stall, inconclusive
+  evidence, breadth decay, budget — **never on a signal about the target** (a port, service, version,
+  banner, named fork). A detector that keys on the target is a playbook in disguise.
+- **A reference contains ONLY reasoning-corrections** — *how to re-think* — **never a target technique**
+  (a tool to run, a CVE, an exploit, a per-service recipe). `reference/surface-signals.md`'s rule holds
+  everywhere: observation → environment → direction only, never a step list.
+Deciding *what to enumerate* or *which technique fits* is never delegated to a reference — that stays
+live reasoning + research (§20). `eval/selftest.sh` lints `refs/` and the mode index for these lines.
+
 ## Delegation
 
 You are the orchestrator. You have specialized sub-agents on different models (a cheap
