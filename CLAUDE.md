@@ -102,8 +102,9 @@ The system has three layers; read them together:
   lives beside them under `recon/ enum/ loot/ exploit/ reversing/ research/ tools/ bin/ notes/
   logs/ cache/` (`cache/` is run-local scratch only — NOT Claude's config/cache). Auto-written,
   read-only companions: `status.md` (operator dashboard), `target_health.md` (live UP/DOWN/MOVED box
-  signal from `rc2_health_watcher`), and `journal.archive.md` (entries rolled out of `journal.md` to
-  keep resume cheap — history, never re-read on resume). This is what lets a hunt outlive a single
+  signal from `rc2_health_watcher`), `recall.md` (auto cross-run `rag` hits for this box's tech — the
+  §5 speed lever, written by `rc2_write_recall` on the status tick), and `journal.archive.md` (entries
+  rolled out of `journal.md` to keep resume cheap — history, never re-read on resume). This is what lets a hunt outlive a single
   context window — the core requirement for Insane boxes. See `doctrine/40-memory-and-state.md` for the
   exact formats (incl. the explicit **resume kernel**: the minimal set read to rebuild state).
 
@@ -181,7 +182,9 @@ tmux is zero-dependency and lives in the agent's shell env, so everything runs o
   flag is not re-hammered; `rc2_htb_owned_init` reads owned-status at launch → `logs/.flag_mode`
   `live` or `defer`-to-end), `rc2_status_writer` (rewrites `status.md` every 600s — flags, phase,
   hypotheses, the guard/ledger line, journal tail, recent tools, tmux, artifacts; also keeps a live
-  "Confirmed path" block in `writeup.md`), `rc2_health_watcher` (probes the target every `HEALTH_INTERVAL`=30s
+  "Confirmed path" block in `writeup.md`, and writes `recall.md` via `rc2_write_recall` — auto cross-run
+  `rag` recall of this box's tech, the §5 speed lever, piggybacked on this tick so there's no extra loop),
+  `rc2_health_watcher` (probes the target every `HEALTH_INTERVAL`=30s
   on `HEALTH_PORTS`="22 80 443" → `target_health.md` UP/DOWN; while DOWN it re-checks the HTB API every
   `HEALTH_IP_RECHECK`=90s and, if the box respawned on a new IP, rewrites `target.env` + flags **TARGET MOVED**
   so the agent stops waiting on a dead IP — `NO_HEALTH=1` to disable), and — when a guard layer is on —

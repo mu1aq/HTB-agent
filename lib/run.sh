@@ -424,12 +424,39 @@ rc2_write_status() {
 
 # rc2_status_writer <rundir> — blocking loop: snapshot every STATUS_INTERVAL (default 600s) until
 # logs/.stop. Background it from hunt:  rc2_status_writer "$R" &  (cleanup kills it + writes a final one)
+# rc2_write_recall <rundir> — AUTO cross-run recall (speed lever #5). Pull the box's observed services/
+# tech from worldmodel, query scripts/rag.sh over OTHER past runs, and write recall.md (read-only companion,
+# like status.md) so the solver SEES "I've met this tech before → what worked/died" without having to
+# remember to call rag. Jumping straight to a known path instead of re-researching saves the token window.
+# Piggybacks the status-writer tick — NO new background loop. Fail-open; stays quiet until worldmodel has
+# services + a prior run actually matches.
+rc2_write_recall() {
+  local rundir="$1" slug; slug="$(basename "$rundir")"
+  local wm="$rundir/worldmodel.md" out="$rundir/recall.md"
+  [ -s "$wm" ] || return 0
+  # distinctive tokens from the "Services & versions" section (drop generic noise so it doesn't match all)
+  local toks; toks="$(sed -n '/## Services/,/^## /p' "$wm" 2>/dev/null \
+    | grep -oiE '[a-z][a-z0-9._-]{2,}' | tr 'A-Z' 'a-z' \
+    | grep -vExF -e tcp -e udp -e the -e and -e with -e open -e port -e http -e https -e version -e service -e server -e linux -e ubuntu -e debian -e windows \
+    | sort -u | head -12 | paste -sd'|' -)"
+  [ -n "$toks" ] || return 0
+  local hits; hits="$("$RC2_ROOT/scripts/rag.sh" "$toks" 2>/dev/null | grep -v "/runs/$slug/" | head -40)"
+  {
+    echo "# recall — cross-run hits for this box's tech (auto; speed lever #5 — do not hand-edit)"
+    echo "_updated $(rc2_utc) · query: ${toks}_"
+    echo "> past runs that touched the same service/tech, and what worked or died there. Jump to a known"
+    echo "> path instead of re-deriving it; a recorded dead end is a negative you can skip. (See doctrine 20.)"
+    echo
+    if [ -n "$hits" ]; then printf '%s\n' "$hits"; else echo "(no prior run has touched this tech yet)"; fi
+  } > "$out" 2>/dev/null || true
+}
+
 rc2_status_writer() {
   local rundir="$1" interval="${STATUS_INTERVAL:-600}" tick=30 last=0
-  rc2_write_status "$rundir"; last=$(date +%s)
+  rc2_write_status "$rundir"; rc2_write_recall "$rundir"; last=$(date +%s)
   while [ ! -f "$rundir/logs/.stop" ]; do
     sleep "$tick"
-    if [ $(( $(date +%s) - last )) -ge "$interval" ]; then rc2_write_status "$rundir"; last=$(date +%s); fi
+    if [ $(( $(date +%s) - last )) -ge "$interval" ]; then rc2_write_status "$rundir"; rc2_write_recall "$rundir"; last=$(date +%s); fi
   done
 }
 

@@ -181,7 +181,11 @@ suddenly start failing *across the board* with connection errors/timeouts, read 
 anything — if it says **DOWN**, the target rebooted under you (HTB auto-reset/respawn, a crash, or a
 reset) and this is **not** your exploit breaking or a dead path; wait and re-probe, expect a possible
 new IP on respawn, and **re-read `user.txt`/`root.txt` after recovery** because a reset rotates the
-flags (a flag captured before the reboot can be stale and will be rejected on submit). `writeup.md` is also assembled on exit by
+flags (a flag captured before the reboot can be stale and will be rejected on submit). **`recall.md`** is
+auto-written from your `worldmodel` services via `scripts/rag.sh`: cross-run hits for this box's tech —
+what a past run found worked or died on the same service/version. Skim it when you hit a new service to
+**jump to a known path instead of re-researching** (a recorded dead end is a negative you can skip); it is
+recall, not instruction — verify against the live box. `writeup.md` is also assembled on exit by
 `report.sh` from your living files — an emoji banner with the flags, the solve chain from
 `journal.md`, the verified facts from `worldmodel.md`, the tools you wrote, and the metrics block —
 so **the quality of the write-up is the quality of `worldmodel.md` + `journal.md`.** You MAY write a
