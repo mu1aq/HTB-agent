@@ -194,7 +194,15 @@ flags (a flag captured before the reboot can be stale and will be rejected on su
 auto-written from your `worldmodel` services via `scripts/rag.sh`: cross-run hits for this box's tech —
 what a past run found worked or died on the same service/version. Skim it when you hit a new service to
 **jump to a known path instead of re-researching** (a recorded dead end is a negative you can skip); it is
-recall, not instruction — verify against the live box. `writeup.md` is also assembled on exit by
+recall, not instruction — verify against the live box.
+**If recall shows a PRIOR *SOLVE* of this same box, that is a verified chain — RE-WALK IT TO THE FLAG
+FIRST**, before deriving anything: re-execute its `confirmed_path` steps against the live instance
+(adapt rotated creds/IDs), verifying each `yields`; only a step that genuinely fails is re-derived, and
+you do **not** chase a different path while a proven one is unwalked. **Conversely, a prior run that did
+NOT solve it is the opposite signal:** its blocker / "give up" / "that surface is a mock" note is a
+recorded **dead end**, not a lead — never adopt a failed run's dismissal as your own hypothesis. (recall
+ranks past runs by outcome so the solved chain is surfaced first and failed-run blockers are flagged as
+dead ends.) `writeup.md` is also assembled on exit by
 `report.sh` from your living files — an emoji banner with the flags, the solve chain from
 `journal.md`, the verified facts from `worldmodel.md`, the tools you wrote, and the metrics block —
 so **the quality of the write-up is the quality of `worldmodel.md` + `journal.md`.** You MAY write a

@@ -28,6 +28,20 @@ Doctrine:
   If something might wait for input, it goes in tmux.
 - **tmux stays the base for every interactive session** (reverse/bind shells, `ssh`, `su`, `evil-winrm`,
   `msfconsole`, db clients, handlers) — the tool runs *inside* a tmux session; nothing below replaces tmux.
+- **OPERATING PRINCIPLE — the instant you have code exec, get a SHELL first, strictly in order:
+  reverse shell → confirm the callback → stabilize → *only then* persist / enumerate.** This is the
+  default first move in any new exec context, and the order is not negotiable:
+  **(1)** Find out whether this context can reach you: fire a reverse shell (`nc`/pwncat catcher in
+  tmux) and **confirm the callback actually connects** — a real interactive session you verify with
+  `id`. Running a mechanical one-shot script is fine for probing, but if a reverse shell is reachable,
+  **an interactive shell is the priority — catch it before anything else.**
+  **(2)** If the callback never comes, that is a *fact*: this context has **no egress to you** — record
+  it (`40` → negative) and fall back to an egress-less channel (a readable side-effect, an oracle). Do
+  **not** keep guessing payload formats, and do **not** proceed as if you had a shell.
+  **(3)** Stabilize the confirmed shell (PTY upgrade), **then** persist and enumerate from it.
+  **Never invert this.** Injecting an SSH key / `authorized_keys` and hammering `ssh`, or tuning `ssh`
+  client options (KEX/cipher/MAC), on a channel you have **not** confirmed reachable is blind guessing
+  and pure wasted motion — persistence (SSH) comes *after* a shell is confirmed working, never before.
 - **For a reverse-shell catcher, prefer `pwncat-cs -lp <port>` WHEN IT RUNS, else fall back to
   `nc -lvnp <port>` + a manual PTY upgrade.** pwncat (in the project venv — `scripts/setup_env.sh`) adds
   PTY auto-upgrade, a stable prompt, a synchronous command API, and **reconnect + persistence**. But treat

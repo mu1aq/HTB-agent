@@ -110,6 +110,15 @@ pass and why**. Choose it by expected value, not by habit:
   means **change the plan, not abandon the context** (`00` → Done; a shallow higher-privilege dismissal is
   what the surrender gate re-opens).
 
+- **When you hold a primitive, CLOSE — don't keep characterizing.** The goal is the flag, not a
+  complete model of the box. The moment you gain code execution, a credential, or a new context, the
+  highest-value move is the **shortest sufficient path to a flag from what you already hold** — attempt
+  to read `user.txt`/`root.txt` (or the next clear privilege gain) through the channel you have *now*,
+  **before** building a larger escalation you may not need. Enumerate and characterize **in service of**
+  that grab, never as a substitute for it. Winning is converting a primitive into the flag quickly;
+  "understand the whole system first" is how a solvable box turns into an endless study — if you can
+  state the mechanism but have not tried the simplest flag-grab it enables, try it now.
+
 If no hypothesis has meaningful confidence, your ORIENT output is "I lack information"
 and the pass becomes an enumeration/observation pass, not an attack.
 
