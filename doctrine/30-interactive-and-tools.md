@@ -89,6 +89,21 @@ author goes in the run's `tools/` with a one-line purpose comment on top; delega
 heavier exploit code to the `exploit-dev` sub-agent and keep the raw payloads in `exploit/`.
 A tool you built and understand beats a downloaded one you don't.
 
+**A working mechanical primitive is a durable asset — save it, don't rebuild it next time.** When a
+script you wrote does a *mechanical* job that will recur on other boxes — sign a request for a
+protocol, build/parse a token or ticket, frame an odd wire format, drive a padding/length oracle,
+assemble a gadget — promote it from the run's `tools/` to the repo **capability library**
+(`capabilities/`, symlinked into your run dir): copy the script in and add one line to
+`capabilities/INDEX.md` naming the **mechanical action** (what it signs/builds/parses) and the run it
+came from. **Before building a primitive, read `capabilities/INDEX.md` — reuse beats rewrite.** This is
+how a fixed model gets better over time: the toolbox of *hands* accretes across runs even though nothing
+about your reasoning changes.
+**The library is "hands", never a playbook (`00`).** An entry executes one mechanical step and is
+described by what it *does mechanically* — never by a target, a vector, or "when to use it" (that
+decision stays live reasoning). A capability never names a CVE, an exploit module, or a per-service
+recipe; if it would, it is an exploit for one box, not a reusable hand — that belongs in the run's
+`exploit/`, not the library. `eval/selftest.sh` enforces this line.
+
 ## Wordlists & local resources
 
 `$SECLISTS` points at a full SecLists install; prefer it over guessing paths. Other

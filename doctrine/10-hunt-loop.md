@@ -157,6 +157,13 @@ changes your strategy, confirm it independently:
 - *High-stakes or destructive action?* Have the `verifier` sub-agent red-team your plan
   **before** you run it.
 
+**Route the mechanical checks through `scripts/prove.sh`** so they are consistent and not skipped
+under momentum: `prove.sh flag <value>` (real 32-hex vs an echo/decoy) and `prove.sh shell
+<tmux_session>` (proves the session actually executes + captures identity). It is a deterministic
+check, **not** a judge — a `REAL` from it still needs *your* provenance confirmation (the flag came
+from `user.txt`/`root.txt` on the target) and the privilege-level check; it only rules out the cheap
+false positives you tend to miss when you want the win.
+
 If verification fails, the hypothesis is *not* confirmed no matter how much you wanted it.
 Record the gap and continue.
 

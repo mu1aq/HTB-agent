@@ -23,6 +23,28 @@ SCORECARD = os.path.join(ROOT, "eval", "scorecard.json")
 
 RANK = {"solved": 3, "partial": 2, "failed": 1, "empty": 0, "unknown": 0, None: 0}
 BAK_RE = re.compile(r"\.bak\.\d+$")
+CEIL = int(os.environ.get("RC2_CEIL", "800"))  # experiment hard-stop (lib/env.sh default)
+
+# death-mode taxonomy (#0): a transparent, ORDERED mapping from the metrics a run already drops to
+# where it died. The signals in failure_analysis.json are coarse (often all-zero even on a loss), so
+# the classifier is deliberately conservative and falls through to 'unclear' rather than guess. The
+# gap it exposes — telling capability-gap from coverage from tunneling needs an INCONCLUSIVE signal
+# we do not yet log — is itself the finding that motivates the next instrument.
+def death_mode(outcome, steps, fa, bad_flags):
+    if outcome == "solved":
+        return "solved"
+    s = steps or 0
+    if bad_flags > 0:
+        return "false-verify"               # recorded a flag the API rejected
+    if s >= 0.9 * CEIL:
+        return "window-exhaustion"          # ran up against the experiment ceiling / budget
+    if fa.get("max_repeat", 0) >= 4 or fa.get("identical_result_stalls", 0) > 0 or fa.get("repeated_actions", 0) >= 5:
+        return "tunneling"                  # ground the same action with no evidence movement
+    if fa.get("timeouts", 0) > 0 or fa.get("error_rate_pct", 0) >= 15 or fa.get("tool_errors", 0) >= 10:
+        return "capability-gap"             # the mechanism kept failing to execute
+    if fa.get("confirmed_hypotheses", 0) == 0 and fa.get("phase_transitions", 0) <= 1:
+        return "coverage-gap"               # never established a foothold / never moved phase
+    return "unclear"                        # made progress, no clear pathology signal (needs richer signal)
 
 
 def base_name(dirname):
@@ -33,7 +55,8 @@ def load_run(d):
     """Read one run dir -> {outcome, difficulty, steps, dur, death, user_flag, root_flag}."""
     fa = os.path.join(d, "failure_analysis.json")
     out = {"outcome": "unknown", "difficulty": None, "steps": None,
-           "dur": None, "death": None, "user": False, "root": False}
+           "dur": None, "death": None, "mode": "unknown", "user": False, "root": False}
+    fa_inner = {}
     if os.path.isfile(fa):
         try:
             j = json.load(open(fa))
@@ -41,10 +64,20 @@ def load_run(d):
             out["difficulty"] = j.get("difficulty")
             out["steps"] = j.get("steps")
             out["dur"] = j.get("duration_min")
-            out["death"] = (j.get("failure_analysis") or {}).get("primary_category")
+            fa_inner = j.get("failure_analysis") or {}
+            out["death"] = fa_inner.get("primary_category")
         except Exception as e:
             out["outcome"] = "unknown"
             out["death"] = f"unparseable:{e}"
+    # false-verify signal: a flag the lab API rejected (hook records kind:bad:<flag> in .submitted)
+    bad_flags = 0
+    sub = os.path.join(d, "logs", ".submitted")
+    if os.path.isfile(sub):
+        try:
+            bad_flags = sum(1 for ln in open(sub, errors="ignore") if "kind:bad" in ln)
+        except Exception:
+            pass
+    out["mode"] = death_mode(out["outcome"], out["steps"], fa_inner, bad_flags)
     ft = os.path.join(d, "flags.txt")
     if os.path.isfile(ft):
         txt = open(ft, errors="ignore").read()
@@ -88,7 +121,7 @@ def score():
             "box": name, "difficulty": box.get("difficulty") or cur["difficulty"],
             "expect": expect, "runs": len(runs),
             "current": cur["outcome"], "best": best["outcome"],
-            "death": cur["death"], "steps": cur["steps"], "dur_min": cur["dur"],
+            "death": cur["death"], "mode": cur["mode"], "steps": cur["steps"], "dur_min": cur["dur"],
             "user_flag": cur["user"], "root_flag": cur["root"],
             "meets_expect": meets, "regressed_within_repo": regressed_within,
             "crux": box.get("crux", ""),
@@ -115,18 +148,35 @@ def diff_baseline(rows):
 
 
 def fmt_table(rows):
-    w = "{box:<20} {difficulty:<7} {expect:<8} {cur:<9} {best:<9} {flags:<6} {death}"
+    w = "{box:<20} {difficulty:<7} {expect:<8} {cur:<9} {flags:<6} {mode}"
     out = [w.format(box="BOX", difficulty="DIFF", expect="EXPECT", cur="CURRENT",
-                    best="BEST", flags="FLAGS", death="DEATH/why"),
-           "-" * 78]
+                    flags="FLAGS", mode="DEATH-MODE"),
+           "-" * 72]
     for r in rows:
         flags = ("U" if r["user_flag"] else "-") + ("R" if r["root_flag"] else "-")
         mark = "" if r["meets_expect"] else "  <- UNMET"
         reg = "  <- regressed-vs-best" if r["regressed_within_repo"] else ""
         out.append(w.format(box=r["box"], difficulty=str(r["difficulty"] or "?"),
-                            expect=r["expect"], cur=r["current"], best=r["best"],
-                            flags=flags, death=str(r["death"] or "")) + mark + reg)
+                            expect=r["expect"], cur=r["current"],
+                            flags=flags, mode=str(r["mode"] or "")) + mark + reg)
     return "\n".join(out)
+
+
+def fmt_distribution(rows):
+    """#0: where the box set dies — the signal that aims where to invest next."""
+    from collections import Counter
+    c = Counter(r["mode"] for r in rows)
+    order = ["solved", "coverage-gap", "capability-gap", "tunneling",
+             "window-exhaustion", "false-verify", "unclear", "unknown"]
+    lines = ["death-mode distribution (current run per box — where we lose):"]
+    for m in order:
+        if c.get(m):
+            lines.append(f"  {m:<18} {c[m]}")
+    losses = [m for m in c if m not in ("solved",)]
+    if losses:
+        lines.append("  invest where the tallest non-solved bar is; 'unclear' = our signals are"
+                     " too coarse here (needs an inconclusive-ratio signal we do not yet log).")
+    return "\n".join(lines)
 
 
 def main():
@@ -142,6 +192,8 @@ def main():
 
     print("redcat box-set scorecard   (runs/ is live; baseline is the committed record)\n")
     print(fmt_table(rows))
+    print()
+    print(fmt_distribution(rows))
     unmet = [r["box"] for r in rows if not r["meets_expect"]]
     d = diff_baseline(rows)
     print()

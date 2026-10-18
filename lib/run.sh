@@ -19,8 +19,9 @@ rc2_scaffold() {
   [ -e "$RUNDIR/.claude/agents" ] || ln -s "$RC2_ROOT/.claude/agents" "$RUNDIR/.claude/agents" 2>/dev/null || true
   # repo tools + reference reachable from the run dir by RELATIVE path, no cd and no repo-name hardcode
   # (doctrine addresses them as scripts/… and reference/… so it stays repo-agnostic across redcatN copies)
-  [ -e "$RUNDIR/scripts" ]   || ln -s "$RC2_ROOT/scripts"   "$RUNDIR/scripts"   2>/dev/null || true
-  [ -e "$RUNDIR/reference" ] || ln -s "$RC2_ROOT/reference" "$RUNDIR/reference" 2>/dev/null || true
+  [ -e "$RUNDIR/scripts" ]      || ln -s "$RC2_ROOT/scripts"      "$RUNDIR/scripts"      2>/dev/null || true
+  [ -e "$RUNDIR/reference" ]    || ln -s "$RC2_ROOT/reference"    "$RUNDIR/reference"    2>/dev/null || true
+  [ -e "$RUNDIR/capabilities" ] || ln -s "$RC2_ROOT/capabilities" "$RUNDIR/capabilities" 2>/dev/null || true
   # per-run hook registration (force-log every tool call + target-safety guard)
   local hook="$RC2_ROOT/lib/hook_log.sh"
   [ -s "$RUNDIR/.claude/settings.json" ] || cat > "$RUNDIR/.claude/settings.json" <<JSON

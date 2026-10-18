@@ -61,6 +61,14 @@ died (the `failure_analysis` death-category + whether user/root flags landed).
 Exit non-zero on a regression vs baseline **or** an unmet box-set expectation — so it drops
 straight into CI or a pre-push check.
 
+**Death-mode distribution (#0).** Each current run is classified — by a transparent, ordered rule
+over the metrics a run already drops — into *where it died*: `coverage-gap / capability-gap /
+tunneling / window-exhaustion / false-verify / unclear`. The distribution is what **aims** the next
+investment (fix the tallest non-solved bar). The signals are coarse today (often all-zero on a
+loss), so the classifier falls through to `unclear` rather than guess — and that `unclear` is itself
+the finding: cleanly separating capability-gap from coverage needs an *inconclusive-ratio* signal we
+do not yet log. Classifier rules live at the top of `score.py`.
+
 ### Adding a box
 Append a row to `boxset.json` **and** keep a real run under `runs/<name>/`; re-snapshot the
 baseline. Base names are matched ignoring `.bak.<ts>` archive suffixes, and `best` is the best
@@ -71,20 +79,26 @@ the scorecard shows Nimbus as `current=failed / best=solved` (a within-repo regr
 
 ## Backlog — deliberately deferred behind this eval
 
-The red-team of the system named five moves (A–E). **A (this eval)** and **B (doctrine diet)**
-are done. The rest are **frozen until the eval produces numbers**, because shipping more
-unmeasured mechanism is the exact anti-pattern that motivated `eval/` in the first place. They
-land one at a time, each with a before/after on the box-set scorecard:
+The red-team named five moves (A–E). Status:
 
-- **C — mechanical capability tools (the real lever on a fixed 4.8 ceiling).** Not playbooks
-  (which vector to use — forbidden) but *hands* (one mechanical step, done reliably): a verified
-  SigV4/SQS request shaper, pwncat/impacket wrappers, protocol clients. The Nimbus crux
-  (`SendMessage` queue-URL/SigV4 format) was a capability gap no amount of doctrine could close.
-- **D — push feedback + applied verification.** The auditor already pushes; extend it from
-  "read this file" to injecting the caught world-model error into the next tool call, and verify
-  the correction was actually applied.
-- **E — parallel *investigation* (not just parallel recon).** Concurrent deep-investigation
-  sub-agent threads on independent surfaces, each reporting only confirmed facts.
+- **A — eval / measurement.** Done (this dir): selftest + box-set scorecard + **death-mode (#0)**.
+- **B — doctrine diet.** Done: hardcoded-path generalization + compressed 10-hunt-loop.
+- **Failure-mode refs + tripwire.** Scaffolded (`refs/`, `doctrine/00`, selftest lint) — the
+  guardrail is in before the refs; modes land one at a time, each eval-gated.
+- **C — capability library (#1).** Framework landed: `capabilities/` (mechanical *hands*, reused
+  across runs), `doctrine/30` save/reuse rule, scaffold symlink, selftest tripwire. Runs populate
+  it; it is how a fixed 4.8 compounds. (The Nimbus `SendMessage` SigV4/queue-URL crux is the kind
+  of mechanical hand it is meant to hold.)
+- **Verification hand (#2).** Done: `scripts/prove.sh` (deterministic flag-realness + shell/identity
+  proof), wired into `doctrine/10` VERIFY, functional selftest. Cuts the false-verify loss.
 
-Each is gated: implement → run the affected boxes → `score.py` must show no regression and,
-ideally, a real improvement, before it is kept.
+Still **frozen until the numbers call for them** (shipping unmeasured mechanism is the anti-pattern
+`eval/` exists to stop):
+- **D — push feedback (applied).** Extend the auditor push from "read this file" to injecting the
+  caught error into the next tool call + verifying the correction landed.
+- **E — parallel *investigation*.** Reframed (see the session's design notes): the real pain is
+  **breadth decay** (a memory/scheduling fix, single loop), not concurrency; true multi-solver
+  concurrency is heavy and token-budget-multiplying — gate it on the death-mode distribution.
+
+Everything is gated: implement → run the affected boxes → `score.py` must show no regression (and
+ideally a real improvement) before it is kept.

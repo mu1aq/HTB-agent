@@ -91,15 +91,16 @@ assert_empty "doctrine has no hardcoded cross-repo absolute paths" "hardcoded pa
 #  (2) a mode detector must key on a REASONING signal, never on the target.
 # Both pass trivially until refs/ + a MODES index exist; they bite the moment one drifts.
 ref_tech=""
-if [ -d refs ]; then
-  # scan refs/*.md EXCEPT README (which legitimately names the banned things to forbid them)
-  while IFS= read -r f; do
-    [ "$(basename "$f")" = "README.md" ] && continue
-    hit="$(grep -nEi 'CVE-[0-9]{4}-[0-9]+|(^|[^a-z])(use +)?(exploit|auxiliary|payload)/|multi/handler|msfconsole' "$f" 2>/dev/null)"
-    [ -n "$hit" ] && ref_tech+="$f: $(printf '%s' "$hit" | head -1)"$'\n'
-  done < <(find refs -maxdepth 1 -name '*.md' 2>/dev/null)
-fi
-assert_empty "refs/ name no target technique (CVE/msf/recipe)" "technique in a ref" "$ref_tech"
+# scan refs/ and capabilities/ EXCEPT README (which legitimately names the banned things to forbid them)
+while IFS= read -r f; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  hit="$(grep -nEi 'CVE-[0-9]{4}-[0-9]+|(^|[^a-z])(use +)?(exploit|auxiliary|payload)/|multi/handler|msfconsole' "$f" 2>/dev/null)"
+  [ -n "$hit" ] && ref_tech+="$f: $(printf '%s' "$hit" | head -1)"$'\n'
+done < <(find refs capabilities -maxdepth 1 -name '*.md' 2>/dev/null)
+assert_empty "refs/ + capabilities/ name no target technique (CVE/msf/recipe)" "technique found" "$ref_tech"
+# the capability library must exist with its manifest (the cross-run 'hands' store, #1)
+if [ -s capabilities/INDEX.md ] && [ -s capabilities/README.md ]; then ok "capability library present (INDEX + README)"
+else bad "capability library present (INDEX + README)"; fi
 
 # detector allowlist = signals about the solver's own reasoning process (NOT the target)
 SIGNALS='repeat|stall|inconclusive|untestable|journal|drift|breadth|decay|budget|ceiling|idle|surrender|grind|freeze|override|noprogress|no_progress|focus|consensus|repetition'
@@ -190,6 +191,21 @@ assert_empty "all 5 sub-agents present with name+model frontmatter" "incomplete"
 if git ls-files --error-unmatch .env >/dev/null 2>&1; then
   bad ".env is NOT tracked by git" ".env is committed — secret leak"
 else ok ".env is not tracked by git"; fi
+
+# ── 7. VERIFY HAND — the mechanical prover must accept a real flag, reject decoys (#2) ──
+echo
+echo "[verify]"
+if [ -x scripts/prove.sh ]; then
+  good_flag="0123456789abcdef0123456789abcdef"
+  decoy_md5="$(printf '%s' flag | md5sum 2>/dev/null | cut -d' ' -f1)"
+  prove_bad=""
+  scripts/prove.sh flag "$good_flag" >/dev/null 2>&1 || prove_bad+="rejected-real "
+  scripts/prove.sh flag "not-a-flag" >/dev/null 2>&1 && prove_bad+="accepted-nonhex "
+  [ -n "$decoy_md5" ] && { scripts/prove.sh flag "$decoy_md5" >/dev/null 2>&1 && prove_bad+="accepted-decoy "; }
+  assert_empty "prove.sh flag: accepts a real 32-hex, rejects non-hex + md5 decoys" "misverdict" "$prove_bad"
+else
+  bad "scripts/prove.sh present and executable"
+fi
 
 # ── SUMMARY ───────────────────────────────────────────────────────────────────
 echo
