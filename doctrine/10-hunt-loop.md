@@ -25,10 +25,23 @@ pass and why**. Choose it by expected value, not by habit:
 - **Impact** = how much closer it gets you (new access > new credential > new surface >
   new fact).
 - **Cost** = time, noise, and risk of corrupting state on the target.
-- Early on, the whole board is unknown, so the highest-impact move is almost always
-  **widening what you can see** (broad+deep enumeration) rather than attacking. You
-  cannot form good hypotheses about surface you haven't observed. Enumerate until the
-  surface stops yielding new facts, *then* attack the richest seam.
+- **Base principle — recon MAXIMALLY first, then let the evidence set direction (not the difficulty
+  label, not a guessed vector).** The whole board is unknown at the start, so the highest-value move is
+  almost always **widening what you can see** (broad + deep enumeration), not attacking — you cannot form
+  good hypotheses about surface you have not observed. The box's stated difficulty tells you roughly how
+  *long* the chain is; it does **not** tell you *where* the path is, and hard boxes specifically wall you in
+  the spot you did not think to look. So do not commit to a vector off the difficulty or a first
+  impression: **enumerate the full surface until it stops yielding new facts, then choose the richest seam
+  from what recon + enumeration actually showed** — and re-steer whenever new enumeration changes the
+  picture. A premature commitment is the usual reason a solvable box stalls.
+- **Run that recon in PARALLEL — serial enumeration is the single biggest time sink.** Most of a hunt's
+  wall-clock is I/O wait (scans, fuzzing, brute, shell callbacks), and the token window — not the clock —
+  is the real budget, so doing it one-at-a-time wastes the window. Fan the opening enumeration out
+  concurrently: the full `nmap` in one tmux session *while* you fuzz web in another *while* you enumerate
+  other services in a third, and delegate independent investigations to sub-agents at the same time
+  (`researcher` on a CVE *while* `recon-analyst` distills the scan *while* `exploit-dev` drafts). Collect,
+  then judge. Parallelism is what keeps "maximal recon" fast instead of slow — prefer it for any
+  independent work, at every phase, not just the opening.
 - **Surface is not only open ports.** A thin, filtered, or empty port scan is itself a
   finding — a prompt to *widen the kind of surface you consider*, not a reason to call the
   box dead. From the evidence you already hold (hostnames, cert SANs, HTTP bodies/headers,
@@ -149,7 +162,9 @@ treat "I should look this up" as a strength, not a delay.
 Design the **minimal** action that will generate evidence for or against the current
 hypothesis. Good experiments are cheap, information-dense, and as reversible as possible.
 Prefer a probe that *distinguishes* between competing hypotheses over one that merely
-confirms a hope. Run it. Long or interactive actions go through tmux
+confirms a hope — **one probe that resolves several hypotheses at once beats many narrow ones**, because
+fewer round-trips to the answer means fewer loops and less of the token window spent. Run it. Long or
+interactive actions go through tmux
 (`doctrine/30-interactive-and-tools.md`); install any missing tool on the fly.
 
 Write down, *before* you look at the output, what each possible result would mean. This

@@ -20,6 +20,11 @@ a prior run) already worked may have a recorded answer — what worked, and what
 a dead end. This is cheap memory across boxes; use it to avoid re-deriving and re-failing. Add
 `-p` to also search the shared PayloadsAllTheThings / GTFOBins references.
 
+This is a **speed lever, not just a convenience**: re-discovering a technique you already proved once
+burns the token window for no new information. A one-line `rag.sh` check on a fingerprint (service +
+version + error string) before researching live often jumps you straight to the known path — treat it as
+the *first* research step, not an afterthought.
+
 ## When to research (triggers)
 
 - A service/product/framework you cannot reason about *cold*, or any version string at all
