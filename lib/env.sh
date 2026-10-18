@@ -9,6 +9,9 @@ rc2_load_env() {
   [ -f "$RC2_ROOT/.env" ] || { echo "no $RC2_ROOT/.env — copy .env.example to .env and fill it"; return 1; }
   set -a; . "$RC2_ROOT/.env"; set +a
   : "${CLAUDE_CODE_OAUTH_TOKEN:?set CLAUDE_CODE_OAUTH_TOKEN (run: claude setup-token) in $RC2_ROOT/.env}"
+  # project venv (scripts/setup_env.sh, uv) first on PATH so the interactive tooling (pwncat-cs, pexpect)
+  # resolves to the working pinned env, not a broken system/pipx install (e.g. pwncat under Python 3.14).
+  [ -d "$RC2_ROOT/.venv/bin" ] && export PATH="$RC2_ROOT/.venv/bin:$PATH"
   # SecLists: honour SECLISTS_DIR from env, else common location.
   export SECLISTS="${SECLISTS:-${SECLISTS_DIR:-$HOME/files_etc/SecLists}}"
   export SECLISTS="${SECLISTS/#\~/$HOME}"

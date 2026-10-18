@@ -1,0 +1,17 @@
+[project]
+name = "redcat2"
+version = "0.1.0"
+description = "Autonomous offensive-research agent (Claude Code headless) — project Python env for the interactive tooling it drives."
+# Python 3.11 ONLY. pwncat-cs 0.5.4 needs stdlib `distutils` (removed in 3.12) AND `pkg_resources`
+# (dropped by the bundled setuptools on 3.14). 3.11 has distutils; setuptools<81 still ships pkg_resources.
+# This exact combo is what makes pwncat-cs importable — verified by scripts/setup_env.sh's self-test.
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "pwncat-cs>=0.5.4",       # reverse-shell catcher: PTY auto-upgrade + stable prompt + reconnect/persistence
+  "pexpect>=4.9",           # prompt-synchronous driving of interactive sessions (.expect(prompt))
+  "setuptools>=70,<81",     # provides pkg_resources (zodburi/pwncat import it); 81 removed it
+  "requests>=2.31",         # used by ad-hoc exploit scripts
+]
+
+# This env is created by scripts/setup_env.sh (uv). It holds ONLY the interactive tooling redcat2 drives;
+# per-box exploit scripts still run under system python3 as before. hunt prepends .venv/bin to PATH.

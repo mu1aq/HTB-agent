@@ -17,3 +17,4 @@ reversing/
 /logs/
 # personal workspace config (auto-PR hook etc.) — not forced on collaborators
 .claude/settings.local.json
+.venv/
