@@ -33,17 +33,12 @@ opus. Adjust per box if a run needs it.)
 
 ## When to delegate (reflexes)
 
-- About to **read something off the internet** → `researcher`. Don't fill your own context
-  with web pages.
-- Facing a **wall of output** (full nmap, a dumped source tree, a config, a long response)
-  → `recon-analyst` to turn it into facts; keep the raw on disk.
-- Need **exploit code** written or adapted, or a payload isn't working and you don't see why
-  → `exploit-dev`.
-- Facing a **binary to reverse** → `reverser` (export-first; keeps raw decompilation off your
-  context). Then hand the primitive it finds to `exploit-dev`.
-- About to **declare a win** that reshapes your plan, or about to run something **expensive,
-  noisy, or irreversible** → `verifier` first. This is your main guard against fooling
-  yourself and against breaking the box.
+Reach for the team by reflex: **reading off the internet** → `researcher`; a **wall of output**
+(full nmap, source tree, config, long response) → `recon-analyst` (keep the raw on disk); **exploit
+code** to write/adapt or a payload that won't fire → `exploit-dev`; a **binary to reverse** →
+`reverser` (export-first; then hand its primitive to `exploit-dev`); about to **declare a win** that
+reshapes your plan, or run something **expensive/noisy/irreversible** → `verifier` first — your main
+guard against fooling yourself or breaking the box.
 
 ## What stays with you
 

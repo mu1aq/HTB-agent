@@ -13,17 +13,12 @@ strategy. See `doctrine/50-subagents.md`.
 
 ## Recall your own past runs first
 
-Before (or alongside) hitting the live internet, check whether you've met this before:
-`scripts/rag.sh <query>` greps every past run's `journal.md`, `worldmodel.md`, `hypotheses.md`,
-`writeup.md`, and `failure_analysis.md`. A service, version, error string, or technique you (or
-a prior run) already worked may have a recorded answer — what worked, and what turned out to be
-a dead end. This is cheap memory across boxes; use it to avoid re-deriving and re-failing. Add
-`-p` to also search the shared PayloadsAllTheThings / GTFOBins references.
-
-This is a **speed lever, not just a convenience**: re-discovering a technique you already proved once
-burns the token window for no new information. A one-line `rag.sh` check on a fingerprint (service +
-version + error string) before researching live often jumps you straight to the known path — treat it as
-the *first* research step, not an afterthought.
+**Before** hitting the live internet, check whether you've met this before: `scripts/rag.sh <query>`
+greps every past run's `journal.md`/`worldmodel.md`/`hypotheses.md`/`writeup.md`/`failure_analysis.md`
+(add `-p` for the PayloadsAllTheThings / GTFOBins refs). This is a **speed lever, not a convenience** —
+re-discovering a technique you already proved once burns the token window for nothing. A one-line check
+on a fingerprint (service + version + error string) often jumps you straight to the known path — what
+worked, or a recorded dead end you can skip. Treat it as the *first* research step, not an afterthought.
 
 ## When to research (triggers)
 
