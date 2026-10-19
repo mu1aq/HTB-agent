@@ -224,12 +224,11 @@ launcher.
 ## 4a. The guard — anti-rabbit-hole enforcement
 
 Hard/Insane boxes fail two opposite ways, and the guard covers both:
-1. **Grinding a disproven hypothesis** — e.g. the Nimbus run burned 832 tool calls re-trying one
-   container-escape across 6 sessions while solved boxes finished in ~186–416.
-2. **Premature surrender on a wrongly-pruned surface** — the same run dismissed **CodeBuild as "a mock"
-   from one 0.5 s build**, recorded that shallow negative as fact, never re-opened it, and declared a
-   confident (wrong) blocker — when `privilegedMode=true` there was a root container with the host's
-   block devices (the actual root path).
+1. **Grinding a disproven hypothesis** — e.g. a run burns ~800+ tool calls re-trying one escape
+   across many sessions while solved boxes finish in ~186–416.
+2. **Premature surrender on a wrongly-pruned surface** — a run dismisses **a service as "just a mock"
+   from one fast probe**, records that shallow negative as fact, never re-opens it, and declares a
+   confident (wrong) blocker — when a privileged mode of that same service was the actual root path.
 
 Doctrine forbids both, but prose alone did not stop them. The guard adds **mechanical enforcement**,
 opt-in and off by default, sharing state and bounded below by the operator.
@@ -237,7 +236,7 @@ opt-in and off by default, sharing state and bounded below by the operator.
 **Layers**
 - **Hook** (`lib/hook_log.sh`, per tool call, mechanical) — counts experiments per hypothesis **and per
   surface** in `logs/accounting.json`; warns or blocks on a literal action repeated `RC2_REPEAT_FREEZE`×,
-  a `frozen` hypothesis, or the global `RC2_CEIL`. The per-surface tally (codebuild:1 vs ecs:203…) is how
+  a `frozen` hypothesis, or the global `RC2_CEIL`. The per-surface tally (surface-a:1 vs surface-b:203…) is how
   a lopsided, under-explored surface gets flagged. Cheap and fast; **not** the semantic judge.
 - **Sameness watcher** (`rc2_guard_watcher` + `JUDGE.md`, out-of-band, model) — when a hypothesis stalls
   (`RC2_STALL` experiments, no new evidence) an **independent sonnet/haiku judge** rules *SAME* (rabbit
@@ -253,13 +252,13 @@ opt-in and off by default, sharing state and bounded below by the operator.
   **clean-exits as a blocker**, an independent reviewer re-audits its privilege map + weakest negatives +
   the per-surface tally and either ACCEPTs the surrender or names a concrete **REOPEN** (component +
   elevation primitive), which relaunches the solver via a supervisor tick. Bounded by `RC2_SURRENDER_MAX`.
-  This is what catches the Nimbus "CodeBuild=mock → give up". [failure mode 2]
+  This is what catches the "this surface is just a mock → give up" failure. [failure mode 2]
 - **Epistemic auditor** (`scripts/auditor.sh` + `AUDITOR.md`, opus, out-of-band, every `AUDITOR_INTERVAL`=420s)
   — the **mid-run, finer-grained** counterpart to the surrender gate (which only fires at clean-exit). It
   reads the raw logs and judges one thing: is a negative the solver leans on **conclusive** (the mechanism
   ran and answered) or **inconclusive** (the test FAULTed / timed out / was blocked and never reached the
-  mechanism)? The Nimbus run is the exact case it exists for: CodeBuild was correctly seen as LIVE, then
-  refuted at high confidence on FAULT-before-BUILD results — a test that never ran. On a mismatch it writes
+  mechanism)? The exact case it exists for: a vector correctly seen as LIVE, then refuted at high
+  confidence on FAULT-before-execution results — a test that never ran. On a mismatch it writes
   `auditor.md`; the **hook pushes** the solver to read it (warn `AUDITOR_NUDGE_ESCALATE`× then exit-2 block,
   self-clearing on a read). A vector that returns only inconclusive results across `RC2_UNTESTABLE_MAX`=4
   materially-different attempts is parked **`untestable`** (naming the missing capability), not refuted.
