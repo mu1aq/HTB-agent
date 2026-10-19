@@ -60,13 +60,13 @@ rc2_fp() {
 # _hook_surface <command> — a DOMAIN-AGNOSTIC surface label, so accounting can flag a lopsided effort
 # distribution (one surface hammered 200x while another got 1 glance = an under-explored surface the
 # surrender gate should re-open). Deliberately names NO product or box — the old version hardcoded one
-# box's AWS services (codebuild/ecs/lambda/sqs…) so every non-cloud box collapsed to "other" and the
+# box's specific cloud services so every non-cloud box collapsed to "other" and the
 # signal died. Now two structural parts:
 #   family  — tool/protocol class, scanned over the whole command so it still classifies actions wrapped
 #             in sudo/tmux/ssh: scan|web|smb|ad|db|ssh|cred|cloud|exploit|other.
 #   target  — the host:port / URL authority / IP / port the action hits; for a cloud CLI, the SERVICE
-#             subcommand (`aws <service>`, `kubectl <resource>`) read straight from the command, so cloud
-#             services differentiate structurally (cloud@codebuild vs cloud@s3) with no hardcoded taxonomy.
+#             subcommand (`<cloud-cli> <service>`, `kubectl <resource>`) read straight from the command, so
+#             cloud services differentiate structurally (cloud@<svc-a> vs cloud@<svc-b>) with no hardcoded taxonomy.
 # label = "family@target" (or just "family" when no target is visible). Best-effort; unknown -> "other".
 _hook_surface() {
   local c; c="$(printf '%s' "$1" | tr 'A-Z' 'a-z')"
@@ -90,7 +90,7 @@ _hook_surface() {
   printf '%s' "$c" | grep -qE 'snmpwalk|snmp-check|onesixtyone|:161' && L="$L snmp"
   printf '%s' "$c" | grep -qE 'showmount|(^|[^a-z])nfs|:2049' && L="$L nfs"
   printf '%s' "$c" | grep -qE '(^|[^a-z])smtp|:25( |$)|:587|swaks' && L="$L mail"
-  printf '%s' "$c" | grep -qE '(^|[^a-z])aws |gcloud|(^|[^a-z])az |kubectl|(^|[^a-z])oc |doctl|boto3|localstack|:4566' && L="$L cloud"
+  printf '%s' "$c" | grep -qE '(^|[^a-z])aws |gcloud|(^|[^a-z])az |kubectl|(^|[^a-z])oc |doctl|boto3' && L="$L cloud"
   printf '%s' "$c" | grep -qE '(^|[^a-z])docker |containerd|(^|[^a-z])runc|/var/run/docker|kubelet|/proc/1/|capsh' && L="$L container"
   # ── action / phase ──
   printf '%s' "$c" | grep -qE 'nmap|masscan|rustscan|-p-|--top-ports|(^|[^a-z])-sv|(^|[^a-z])-sc' && L="$L scan"
@@ -239,6 +239,11 @@ rc2_auditor_push() {
   [ -f "$aud" ] || return 0
   local atick; atick="$(grep -oE '^AUDITOR_TICK: [0-9]+' "$aud" 2>/dev/null | grep -oE '[0-9]+' | head -1)"
   [ -n "$atick" ] || return 0
+  # D (push feedback): carry the auditor's OWN specific directive in the push, not just "go read it",
+  # so the correction lands in the next tool call. (These are the auditor's live findings, not policy.)
+  local vec donext
+  vec="$(grep -oE '^VECTOR: .*' "$aud" 2>/dev/null | head -1 | sed 's/^VECTOR: *//' | cut -c1-80)"
+  donext="$(grep -oE '^DO NEXT: .*' "$aud" 2>/dev/null | head -1 | sed 's/^DO NEXT: *//' | cut -c1-240)"
   local tn fp2
   tn="$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)"
   fp2="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)"
@@ -251,10 +256,39 @@ rc2_auditor_push() {
   if [ "$seen" != "$atick" ]; then cnt=1; else cnt=$((cnt+1)); fi
   echo "$atick $cnt" > "$nf" 2>/dev/null
   if [ "$cnt" -ge "$esc" ] 2>/dev/null; then
-    echo "redcat2 auditor [BLOCK]: an independent evidence-quality audit (auditor.md, AUDITOR_TICK $atick) flags a negative you are leaning on as resting on INCONCLUSIVE evidence — a test that never reached the mechanism (FAULT/timeout/transport/tooling), scored as if the mechanism answered. You have taken $cnt actions without reading it. STOP: Read auditor.md in full, then re-open the flagged vector with a materially-different attempt, or PARK it as untestable (naming the missing capability) — do NOT leave it recorded as a flat refutation. Reading auditor.md clears this block." >&2
+    echo "redcat2 auditor [BLOCK]: an independent evidence-quality audit (auditor.md, AUDITOR_TICK $atick) flags a negative you are leaning on as resting on INCONCLUSIVE evidence — a test that never reached the mechanism (FAULT/timeout/transport/tooling), scored as if the mechanism answered. You have taken $cnt actions without reading it.${vec:+ FLAGGED VECTOR: $vec.}${donext:+ DO NEXT (from the audit): $donext} STOP: Read auditor.md in full, then re-open the flagged vector with a materially-different attempt (or PARK it as untestable, naming the missing capability) — do NOT leave it recorded as a flat refutation. Reading auditor.md clears this block." >&2
     return 2
   fi
-  echo "redcat2 auditor (push $cnt/$esc): new finding in auditor.md (AUDITOR_TICK $atick) — a vector you are treating as dead may rest on INCONCLUSIVE evidence (a test that never ran). Read auditor.md before scoring it refuted; follow its DO NEXT (a materially-different attempt at the same vector, or PARK as untestable). doctrine 10 → conclusiveness, not effort, governs a freeze." >&2
+  echo "redcat2 auditor (push $cnt/$esc): new finding in auditor.md (AUDITOR_TICK $atick) — a vector you are treating as dead may rest on INCONCLUSIVE evidence (a test that never ran).${vec:+ VECTOR: $vec.}${donext:+ DO NEXT: $donext} Read auditor.md before scoring it refuted; follow its DO NEXT (a materially-different attempt at the same vector, or PARK as untestable). doctrine 10 → conclusiveness, not effort, governs a freeze." >&2
+  return 0
+}
+
+# rc2_burst_guard <cmd> — self-DoS guard. The repeat-guard above keys on the EXACT command, so a flood
+# of the SAME action with VARYING payloads (jobs/requests with different bodies) slips past it and can
+# starve/crash the target — after which the solver's own shells/ssh hang and it misreads a self-inflicted
+# outage as "the box is hard". This counts TARGET-TOUCHING actions by command STEM (first tokens) in a
+# time window, so a varying-payload burst to one endpoint trips it while diverse parallel recon (different
+# stems) does not. WARN at RC2_BURST_MAX, hard-block at RC2_BURST_HARD. Fail-open; generic (no service names).
+rc2_burst_guard() {
+  local cmd="$1"; [ -n "$cmd" ] || return 0
+  # generic outbound/target-touching TOOLS only — never a provider or service name, never box-specific
+  # API verbs (that would overfit). Raw cloud/API floods go through curl/wget, which are covered here.
+  local re='curl|wget| nc |ncat|socat|nmap|masscan|rustscan|gobuster|ffuf|feroxbuster|dirb|nikto|nuclei|wpscan|hydra|medusa|crackmapexec|netexec|nxc |evil-winrm'
+  printf '%s' "$cmd" | grep -qiE "$re" || return 0
+  local win="${RC2_BURST_WINDOW:-120}" warn="${RC2_BURST_MAX:-30}" hard="${RC2_BURST_HARD:-60}"
+  local bf="$logdir/.burst" now stem cnt
+  now="$(date +%s 2>/dev/null)" || return 0
+  stem="$(printf '%s' "$cmd" | tr -s ' \t' ' ' | cut -d' ' -f1-3 | tr -cd 'A-Za-z0-9 _.:/-')"
+  printf '%s\t%s\n' "$now" "$stem" >> "$bf" 2>/dev/null || true
+  awk -F'\t' -v now="$now" -v win="$win" 'now-$1<=win' "$bf" > "$bf.tmp" 2>/dev/null && mv "$bf.tmp" "$bf" 2>/dev/null
+  cnt="$(awk -F'\t' -v s="$stem" '$2==s' "$bf" 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${cnt:-0}" -ge "$hard" ] 2>/dev/null; then
+    echo "redcat2 target-safety [BLOCK]: '$stem' fired ${cnt}x in ${win}s — a varying-payload burst like this DoSes the box (CPU/queue starvation), after which your OWN shells/ssh hang and it looks like the box is 'hard'. BLOCKED. Pace it: one action -> verify -> next. Read target_health.md before concluding anything is down." >&2
+    return 2
+  fi
+  if [ "${cnt:-0}" -ge "$warn" ] 2>/dev/null; then
+    echo "redcat2 target-safety (burst $cnt/$hard): '$stem' fired ${cnt}x in ${win}s. A flood (even with varying payloads) can DoS the target and break your own access. Slow down (one -> verify -> next); if commands start hanging across the board, read target_health.md before blaming the vector." >&2
+  fi
   return 0
 }
 
@@ -273,6 +307,9 @@ if [ "$phase" = "pre" ]; then
       exit 2
     fi
   fi
+
+  # self-DoS burst guard (varying-payload flood to one endpoint). Fail-open; only a hard flood returns 2.
+  rc2_burst_guard "$cmd"; bgc=$?; [ "${bgc:-0}" -eq 2 ] && exit 2
 
   # integrity: block a lookup of THIS box's OWN public solution (htb + machine_name + spoiler keyword).
   # Narrow on purpose — all three required — so common-word box names don't false-positive; the broad

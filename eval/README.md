@@ -63,7 +63,8 @@ straight into CI or a pre-push check.
 
 **Death-mode distribution (#0).** Each current run is classified — by a transparent, ordered rule
 over the metrics a run already drops — into *where it died*: `coverage-gap / capability-gap /
-tunneling / window-exhaustion / false-verify / unclear`. The distribution is what **aims** the next
+tunneling / premature-stop / window-exhaustion / false-verify / unclear` (`premature-stop` = had a
+foothold + a live vector but stopped below the budget ceiling). The distribution is what **aims** the next
 investment (fix the tallest non-solved bar). The signals are coarse today (often all-zero on a
 loss), so the classifier falls through to `unclear` rather than guess — and that `unclear` is itself
 the finding: cleanly separating capability-gap from coverage needs an *inconclusive-ratio* signal we
@@ -73,7 +74,7 @@ do not yet log. Classifier rules live at the top of `score.py`.
 Append a row to `boxset.json` **and** keep a real run under `runs/<name>/`; re-snapshot the
 baseline. Base names are matched ignoring `.bak.<ts>` archive suffixes, and `best` is the best
 outcome ever seen for that box while `current` is the canonical (non-`.bak`) run — which is how
-the scorecard shows Nimbus as `current=failed / best=solved` (a within-repo regression).
+the scorecard shows a box as `current=failed / best=solved` (a within-repo regression).
 
 ---
 
@@ -87,8 +88,8 @@ The red-team named five moves (A–E). Status:
   guardrail is in before the refs; modes land one at a time, each eval-gated.
 - **C — capability library (#1).** Framework landed: `capabilities/` (mechanical *hands*, reused
   across runs), `doctrine/30` save/reuse rule, scaffold symlink, selftest tripwire. Runs populate
-  it; it is how a fixed 4.8 compounds. (The Nimbus `SendMessage` SigV4/queue-URL crux is the kind
-  of mechanical hand it is meant to hold.)
+  it; it is how a fixed 4.8 compounds. (A protocol request-signing / exact-wire-format crux — the
+  fiddly mechanical step a vector choice cannot substitute for — is the kind of hand it is meant to hold.)
 - **Verification hand (#2).** Done: `scripts/prove.sh` (deterministic flag-realness + shell/identity
   proof), wired into `doctrine/10` VERIFY, functional selftest. Cuts the false-verify loss.
 

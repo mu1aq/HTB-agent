@@ -11,7 +11,7 @@
 #    3. assets            — creds / services / files the worldmodel records (for the combination pass).
 #  Reads only; no model call. This is COVERAGE, not a to-do list — 4.8 does the reasoning.
 #    scripts/gaps.sh            # newest run
-#    scripts/gaps.sh Nimbus
+#    scripts/gaps.sh <machine>
 # =============================================================================
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; . "$ROOT/lib/common.sh" 2>/dev/null || true

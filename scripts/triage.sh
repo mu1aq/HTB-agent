@@ -9,7 +9,7 @@
 #  Deterministic over logs/failure_analysis.json (+ flags.txt); no model call. Reads only.
 #  No arg -> every run under runs/ (a cross-run rollup). A name/dir -> just that run.
 #    scripts/triage.sh            # all runs, with an aggregate
-#    scripts/triage.sh Nimbus     # one run
+#    scripts/triage.sh <machine>     # one run
 #    BAKS=1 scripts/triage.sh     # include *.bak.* archived runs too (default: skip)
 # =============================================================================
 set -uo pipefail

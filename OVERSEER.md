@@ -32,6 +32,14 @@ Before you judge:
 - Without a clear signal, judge **on-track**. When drift is just starting, `minor-drift`. When
   it is clearly stuck (same vector/endpoint repeated, escalating complexity with no new
   confirmed fact, evidence budgets blown without freezing), `rabbit-hole`.
+- **Coverage drift — the "exotic over obvious" trap.** Also flag (at least `minor-drift`) when the
+  solver is pouring effort into intricate/exotic attempts while a **known, higher-value capability of
+  the surface in play was never actually tested this run** — especially a privileged mode of a service
+  it already reaches (a privileged/host-exposing option, a higher-privileged principal/role, a
+  direct-exec API) that it skipped, or dismissed from an *inherited* "that's a mock/dead" note rather
+  than its own test. Enumerate the obvious high-value levers of the current surface; if the top one is
+  untested, put "test <that lever> directly before more exotic paths" at the front of DO NEXT. Trying
+  the highest-value primitive first is usually both faster and cheaper on the token budget.
 - An **OPERATOR DIRECTIVE** at the top of the digest (a human instruction) is top priority —
   above your own judgment. If the solver is not yet following it, do not drop STATUS to
   on-track; put the directive, turned into concrete actions, at the front of DO NEXT. If it

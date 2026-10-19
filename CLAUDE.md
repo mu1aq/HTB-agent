@@ -219,12 +219,12 @@ tmux is zero-dependency and lives in the agent's shell env, so everything runs o
   unwritable). *Against over-grinding:* the **hook** (per-call repeat/stall/frozen/ceiling warn-or-block
   + one-shot override), the **sameness watcher** (`rc2_guard_watcher` + `JUDGE.md`, out-of-band sonnet/
   haiku judge → persistent arbiter freeze), and the **oversee gate** (same-`FOCUS` consensus → raises the
-  live level). *Against premature surrender on a wrongly-pruned surface* (the Nimbus "CodeBuild=mock →
-  give up"): the **surrender gate** (`rc2_surrender_gate` + `SURRENDER.md`, opus) re-audits weak negatives
+  live level). *Against premature surrender on a wrongly-pruned surface* (the classic "this surface is
+  just a mock → give up" dismissal): the **surrender gate** (`rc2_surrender_gate` + `SURRENDER.md`, opus) re-audits weak negatives
   + the privilege map on a clean-exit blocker and REOPENs a shallow higher-privilege dismissal, relaunching
   via a supervisor tick (bounded by `RC2_SURRENDER_MAX`); and — finer-grained, mid-run, not only at
   clean-exit — the **epistemic auditor** (`scripts/auditor.sh` + `AUDITOR.md`, opus, every `AUDITOR_INTERVAL`=420s),
-  an independent reader of the RAW logs that catches the *second-order* surrender the Nimbus run showed — a
+  an independent reader of the RAW logs that catches the *second-order* surrender — a
   vector correctly seen as LIVE but then refuted on **inconclusive** evidence (a test that FAULTed/timed-out/
   was-blocked and never reached the mechanism). It writes `auditor.md`; the hook **pushes** the solver to read
   it (warn → `exit 2` block after `AUDITOR_NUDGE_ESCALATE`=3 un-acked calls, self-clearing on a read of the file).

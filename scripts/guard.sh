@@ -5,9 +5,9 @@
 #  logs/guard.mode tagged with logs/.guard_secret so the solver cannot forge it.
 #  Effective enforcement = the STRONGER of this live mode and the operator's
 #  RC2_GUARD floor (env, set at ./hunt launch) — see doctrine 10 → the guard.
-#    guard.sh Nimbus block "rabbit-hole: N-consensus on floci escape"
-#    guard.sh Nimbus warn            # de-escalate (never below the operator floor)
-#    guard.sh Nimbus show            # print floor hint + current live mode
+#    guard.sh <machine> block "rabbit-hole: N-consensus on <focus> escape"
+#    guard.sh <machine> warn            # de-escalate (never below the operator floor)
+#    guard.sh <machine> show            # print floor hint + current live mode
 # =============================================================================
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

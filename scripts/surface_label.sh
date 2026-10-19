@@ -5,8 +5,8 @@
 #  INFERRED layer (privesc-candidate, auth-bypass-surface, trust-boundary, …) that patterns can't —
 #  one out-of-band model pass (haiku by default). Off by default; this is the optional enrichment for
 #  the §5 gap digest. Writes logs/surfaces_inferred.json; gaps.sh folds it in when present. Reads only.
-#    RC2_SURFACE_TIER2=1 scripts/surface_label.sh Nimbus
-#    RC2_SURFACE_TIER2_MODEL=sonnet scripts/surface_label.sh Nimbus
+#    RC2_SURFACE_TIER2=1 scripts/surface_label.sh <machine>
+#    RC2_SURFACE_TIER2_MODEL=sonnet scripts/surface_label.sh <machine>
 #  (Runs regardless of the flag when invoked by hand; the flag is what lets gaps.sh auto-offer it.)
 # =============================================================================
 set -uo pipefail

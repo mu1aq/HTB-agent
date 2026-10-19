@@ -167,9 +167,9 @@ scripts/guard.sh <name|slug|ip> <off|warn|block|show> ["reason"]
 - `show` prints floor / live / effective without changing anything.
 
 ```bash
-scripts/guard.sh Nimbus show                         # floor / live / effective
-scripts/guard.sh Nimbus block "rabbit-hole: floci"   # clamp this run to block now
-scripts/guard.sh Nimbus off                           # release live (falls back to the floor)
+scripts/guard.sh <machine> show                         # floor / live / effective
+scripts/guard.sh <machine> block "rabbit-hole: <focus>"   # clamp this run to block now
+scripts/guard.sh <machine> off                           # release live (falls back to the floor)
 ```
 
 Appends every change to `logs/guard.log`. Reads nothing from, and never touches, the target.

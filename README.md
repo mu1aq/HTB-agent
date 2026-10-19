@@ -226,8 +226,8 @@ are installed separately by you; `~/.local/bin/{ida,idat}` wrappers point at the
   covering **both** ways a hard box is lost. *Against over-grinding:* a per-call **hook** (repeat / stall
   / ceiling / frozen → warn or block, one-shot override), an out-of-band **sameness judge** (sonnet/haiku
   freezes a hypothesis it rules a dead loop), and the supervisor **gate** (same-focus consensus → tighten).
-  *Against premature surrender on a surface it pruned too shallowly* (what sank Nimbus — "CodeBuild is a
-  mock" from one fast build, when `privilegedMode=true` was the root path): a **surrender gate** that, on a
+  *Against premature surrender on a surface it pruned too shallowly* (e.g. dismissing a service as "just a
+  mock" from one fast probe, when a privileged mode of it was the real path): a **surrender gate** that, on a
   clean-exit blocker, has an independent opus re-audit the weak negatives + the **privilege map** and
   re-open a shallow higher-privilege dismissal. The solver is oriented to **hunt the privilege delta**
   (what runs above me, and does my input reach it) and to record negatives with how-deeply-tested.

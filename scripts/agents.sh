@@ -10,7 +10,7 @@
 #  Read-only; it runs no model and never touches the target. A thin reader over the hook's logs.
 #
 #    scripts/agents.sh                 # newest run — snapshot of all agent responses so far
-#    scripts/agents.sh Nimbus          # by machine name / slug
+#    scripts/agents.sh <machine>          # by machine name / slug
 #    scripts/agents.sh -f              # follow live (poll; new responses as they land)
 #    scripts/agents.sh -n 20           # only the last 20 entries (snapshot); TAIL=20 also works
 #    FULL=1 scripts/agents.sh          # each sub-agent's FULL result (default: truncated to SNIP chars)

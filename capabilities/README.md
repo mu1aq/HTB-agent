@@ -10,7 +10,7 @@ never a playbook.** A capability:
 - **executes one mechanical step** — signs / builds / parses / frames / drives an oracle / assembles
   a gadget. It does *work*, it does not *decide*.
 - is described by **what it does mechanically**, never by a target, a vector, or "when to use it".
-  *"sign an arbitrary HTTP request with SigV4 given creds+params"* ✓ — *"exploit SQS on Nimbus"* ✗.
+  *"sign an arbitrary request for an auth scheme, given key + params"* ✓ — *"exploit <service> on <box>"* ✗.
 - **never names a CVE, an exploit/metasploit module, or a per-service recipe.** If it would, it is an
   exploit for one box, not a reusable hand — keep that in that run's `exploit/`, not here.
 

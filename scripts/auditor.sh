@@ -14,10 +14,10 @@
 #  this judges EVIDENCE QUALITY (premature surrender on an untested mechanism). It
 #  never touches the target — raw logs in, advice out. Mirrors oversee.sh.
 #
-#    scripts/auditor.sh Nimbus
-#    AUDITOR_INTERVAL=300 scripts/auditor.sh Nimbus
-#    ONESHOT=1 scripts/auditor.sh Nimbus              # one audit then exit
-#    AUDITOR_MODEL=claude-opus-4-8 scripts/auditor.sh Nimbus
+#    scripts/auditor.sh <machine>
+#    AUDITOR_INTERVAL=300 scripts/auditor.sh <machine>
+#    ONESHOT=1 scripts/auditor.sh <machine>              # one audit then exit
+#    AUDITOR_MODEL=claude-opus-4-8 scripts/auditor.sh <machine>
 # =============================================================================
 set -uo pipefail
 . "$(dirname "$0")/lib/reviewer_loop.sh"   # shared scaffolding: env/cache policy, arg-parse, claude call, main loop

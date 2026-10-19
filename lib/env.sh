@@ -27,9 +27,9 @@ rc2_load_env() {
 
   # ── guard / rabbit-hole calibration defaults — SINGLE SOURCE OF TRUTH ──────────
   # Calibrated from this toolkit's own runs: solved boxes finished in ~186-416 tool calls;
-  # the Nimbus rabbit hole burned 832 with no root. .env or the launch env overrides any of
+  # a hard rabbit-hole run burned ~832 with no root. .env or the launch env overrides any of
   # these. All EXPORTED so the per-call hook (a separate process) inherits them.
-  : "${RC2_CEIL:=800}"             # global experiment hard-stop (~2x slowest solved; Nimbus wedged near here)
+  : "${RC2_CEIL:=800}"             # global experiment hard-stop (~2x slowest solved; the worst rabbit-hole wedged near here)
   : "${RC2_WARN:=450}"             # global experiment warn line (just above the slowest solve, 416)
   : "${RC2_BUDGET_DEFAULT:=8}"     # per-hypothesis attempt budget seeded into ledger.json
   : "${RC2_REPEAT_FREEZE:=4}"      # identical-action repeats on one hypothesis before the hook warns/blocks

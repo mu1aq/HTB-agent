@@ -38,6 +38,19 @@ A FAULT with no logs, a timeout, a dropped connection, "unpullable offline", a `
 these are INCONCLUSIVE by definition. "I tried the obvious moves and they failed" is NOT a
 refutation of the mechanism; it is a refutation of those moves.
 
+**Two specific INCONCLUSIVE patterns to catch — both are "the mechanism never truly answered":**
+- **Wrong-knob abandonment.** The solver tried a vector a few times, all with the *same* value of a
+  controllable parameter (an auth form, an encoding, a protocol variant, a flag), and declared it dead
+  — without ever varying that one knob. If a prior SOLVE or `recall.md` names a *specific* knob for this
+  step (e.g. a particular credential form or request encoding) and the solver's attempts did **not**
+  match it, the step is INCONCLUSIVE, not refuted: the verified setting was never tried. Flag it and
+  name the knob to vary.
+- **Inherited / unverified negative.** The solver is treating a vector as dead based on something it did
+  **not** test *this run*: a prior FAILED run's "X is a mock / give up" note, a `recall.md` dead-end, or a
+  shallow first impression ("looks like a mock/decoy/stub"). An inherited or glance-level negative is
+  INCONCLUSIVE until *this run's* mechanism renders the verdict. A failed run's dismissal is a
+  **re-test candidate**, never a proven refutation. Flag it as inconclusive and say to test it directly.
+
 ## Input
 Each tick you get a digest built from the RAW logs: recently refuted/frozen hypotheses (from
 `hypotheses.md`/`ledger.json`), the solver's recorded `negatives` with their claimed

@@ -44,6 +44,9 @@ def death_mode(outcome, steps, fa, bad_flags):
         return "capability-gap"             # the mechanism kept failing to execute
     if fa.get("confirmed_hypotheses", 0) == 0 and fa.get("phase_transitions", 0) <= 1:
         return "coverage-gap"               # never established a foothold / never moved phase
+    if fa.get("confirmed_hypotheses", 0) > 0 and (fa.get("idle_wait_turns", 0) > 0
+            or fa.get("primary_category") in ("idle_wait", "planning")):
+        return "premature-stop"             # had progress + a live vector, stopped/gave up below the ceiling
     return "unclear"                        # made progress, no clear pathology signal (needs richer signal)
 
 
@@ -167,7 +170,7 @@ def fmt_distribution(rows):
     from collections import Counter
     c = Counter(r["mode"] for r in rows)
     order = ["solved", "coverage-gap", "capability-gap", "tunneling",
-             "window-exhaustion", "false-verify", "unclear", "unknown"]
+             "premature-stop", "window-exhaustion", "false-verify", "unclear", "unknown"]
     lines = ["death-mode distribution (current run per box — where we lose):"]
     for m in order:
         if c.get(m):
