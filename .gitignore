@@ -24,3 +24,6 @@ eval/scorecard.json
 
 # vendor: in-folder external data (SecLists etc.) — symlinked/copied locally, never committed
 vendor/
+
+# repo-root research/ is run scratch (per-run research lives in runs/<slug>/research/) — never commit
+research/
