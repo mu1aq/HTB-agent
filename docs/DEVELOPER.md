@@ -171,16 +171,16 @@ Everything above is redcat1-plus-reasoning. The guard is what the recent work ad
 worth understanding. **It exists because prose discipline alone did not stop the two ways a hard box is
 actually lost.** It is opt-in and OFF by default.
 
-### 4.1 The two failure modes (both observed on "Nimbus")
+### 4.1 The two failure modes
 
 ```
   FAILURE 1 : OVER-GRIND                    FAILURE 2 : PREMATURE SURRENDER
   ----------------------                    -------------------------------
   drill one disproven hypothesis            dismiss a surface on thin evidence
-  forever -- Nimbus burned 832 calls        -- "CodeBuild is a mock" from ONE 0.5s
-  on one container-escape across 6          build -- record that shallow negative
-  sessions; solved boxes finished in        as fact, never re-open it, then declare
-  ~186-416 calls.                           a confident (WRONG) blocker.
+  forever -- a run burns ~800+ calls        -- "this service is just a mock" from
+  on one escape across many sessions;       ONE fast probe -- record that shallow
+  solved boxes finished in                  negative as fact, never re-open it, then
+  ~186-416 calls.                           declare a confident (WRONG) blocker.
 
      caught by:                             caught by:
        hook repeat / stall / ceiling        surrender gate (re-audit, clean-exit)
@@ -196,7 +196,7 @@ A third, subtler one surfaced later:
 ```
   FAILURE 3 : CONFIRMATION GRINDING  ("fix the want, then solve")
   --------------------------------------------------------------
-  the agent fixes a desired MECHANISM (e.g. "CodeBuild -> docker.sock -> host") and grinds
+  the agent fixes a desired MECHANISM (e.g. "service X -> a privileged socket -> host") and grinds
   to achieve it, ignoring its own high-confidence evidence that the mechanism is absent -
   and checks only for the primitive it WANTED instead of enumerating what is present.
      caught by: the sameness judge's `contradiction` signal (section 4.5)
@@ -236,7 +236,7 @@ Why five layers, not one: they act at **different granularities and cadences** -
 per-stall (watcher), per-review (oversee), per-surrender (gate), per-cycle evidence-audit (auditor) -
 and against **opposite** failures. A single mechanism cannot be both "stop drilling" and "don't give up".
 FM2 and FM2' are the same failure (premature surrender) at two depths: the surrender gate catches it only
-when the solver clean-exits; the auditor catches the *second-order* version the Nimbus fresh run showed -
+when the solver clean-exits; the auditor catches the *second-order* version -
 a vector correctly seen as LIVE, then refuted at high confidence on a test that never reached the
 mechanism - mid-run, before it hardens into a blocker.
 
