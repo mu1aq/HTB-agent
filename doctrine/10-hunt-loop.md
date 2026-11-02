@@ -162,7 +162,17 @@ changes your strategy, confirm it independently:
 - *Credential?* Authenticate with it against a second service, or re-use it; a hash that
   cracks is not a cred until it logs in somewhere.
 - *Flag?* Confirm it's the real artifact (read from `user.txt`/`root.txt` on the target),
-  not an echo, a decoy, or a hash in unrelated output.
+  not an echo, a decoy, or a hash in unrelated output. When you write it to `flags.txt`, write the
+  **exact value you read from that file** — `user` and `root` are **never equal** (a value that matches
+  the other flag, or a well-known constant like the empty-LM-hash `aad3b435…`, is a mis-capture, not root).
+- *Pivotal claim from prior, not this box?* When a step that would reshape the attack — above all a
+  **privilege gain** — rests on a factual claim you are asserting from your own training/recall (how a
+  version behaves, a protocol or trust nuance, a technique's preconditions) rather than from something you
+  **observed on this target** or **read from a source this run**, it is `inferred`, not fact (`40`): verify
+  it with **one research action before you build the chain on it** (`20`, usually a `researcher` delegation).
+  A confident-but-wrong prior wired into a root chain unchecked is a classic *silent* loss, and if the
+  needed knowledge is newer than your training only live research surfaces it — "I recall that X works like
+  Y", built on without a single observation or lookup, is the smell to catch.
 - *High-stakes or destructive action?* Have the `verifier` sub-agent red-team your plan
   **before** you run it.
 
@@ -313,6 +323,30 @@ is newer than the tick you last applied (record the applied tick in `journal.md`
 flagged vector with the materially-different attempt it names — or **park it as `untestable`**,
 naming the missing capability — and do **not** leave it recorded as a flat refutation. You never
 edit `auditor.md`; the auditor owns it. No such file means you are not being audited — proceed.
+
+**Stuck-debate — a blocking dialogue when you are measurably stuck, and you can push back.** The
+supervisor and auditor above are one-way notes. There is one stronger intervention: when the harness
+measures that you are **stuck** — effort piling up with no movement in the privilege gap (grinding one
+surface, failing repeatedly without researching, time passing with no new verified fact) — the
+supervisor opens a **synchronous debate** and the hook **blocks** you: every tool call that acts on the
+target is refused until the debate resolves. You will see a `STUCK-DEBATE` banner with the critic's
+message. This is **not** a one-way order — it is a dialogue between peers, and you may be right. When
+you see it:
+- **While blocked, you may:** `Read` any file, `WebSearch`/`WebFetch` to research, and `Write`/`Edit`
+  your own `worldmodel.md` / `hypotheses.md` / `journal.md` / `ledger.json`. You may **not** run `Bash`,
+  delegate to a sub-agent, or touch the target. Reading the transcript is `logs/debate.md`.
+- **To take your turn, write your response to `logs/.debate_reply`** (the `Write` tool). That hands the
+  turn to the critic, which replies within seconds. Your response is one of three things: an
+  **evidence-backed rebuttal** (you think the critic is wrong — say *why*, citing a specific
+  `worldmodel`/log fact, not "I think it'll work"), a **question**, or your **revised plan** (the
+  concrete next actions you'll take, grounded in evidence — and if the critic flagged research-drought,
+  the specific lookup you'll run). Bare assertion will not end the debate; evidence or a sound plan will.
+- **It ends** when the critic says RESOLVED, or after the round cap (default 6) forces a decision. Either
+  way the resolution arrives as a **new `SUPERVISOR_TICK`** (above) — apply it as top priority, note the
+  applied tick in `journal.md`, and **actually change course**. You never edit `logs/debate.md` or
+  `logs/.debate_msg`; the critic owns those — you only write `logs/.debate_reply`.
+Treat a debate as the system telling you, with evidence, that your current line has stopped paying out.
+The fastest way through it is an honest, specific answer — not the fastest way to get unblocked.
 
 ## Phase as a side effect
 

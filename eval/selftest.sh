@@ -207,6 +207,139 @@ else
   bad "scripts/prove.sh present and executable"
 fi
 
+# ── 8. STUCK-DEBATE — the synchronous critic↔solver dialogue wiring ──────────
+echo
+echo "[debate]"
+if [ "$src_ok" = 1 ]; then
+  # the hook's allow/block decision table (dependency-free helper in guard_lib.sh)
+  dbg=""
+  rc2_debate_allowed solver Read ""                       || dbg+="solver-Read-blocked "
+  rc2_debate_allowed solver WebSearch ""                  || dbg+="solver-WebSearch-blocked "
+  rc2_debate_allowed solver Bash ""                       && dbg+="solver-Bash-allowed "
+  rc2_debate_allowed solver Task ""                       && dbg+="solver-Task-allowed "
+  rc2_debate_allowed solver Write "/r/logs/.debate_reply" || dbg+="solver-reply-write-blocked "
+  rc2_debate_allowed solver Edit  "/r/hypotheses.md"      || dbg+="solver-board-edit-blocked "
+  rc2_debate_allowed solver Write "/r/exploit/x.py"       && dbg+="solver-exploit-write-allowed "
+  rc2_debate_allowed critic Read ""                       || dbg+="critic-Read-blocked "
+  rc2_debate_allowed critic Write "/r/logs/.debate_reply" && dbg+="critic-write-allowed "
+  rc2_debate_allowed critic Bash ""                       && dbg+="critic-Bash-allowed "
+  assert_empty "debate allow/block table: solver reads+research+reply, critic read-only, target actions blocked" "misgate" "$dbg"
+  # no open debate ⇒ no turn ⇒ the hook gate is a no-op (the safety invariant: the mechanism is inert when off)
+  dtmp="$(mktemp -d)"; mkdir -p "$dtmp/logs"
+  if [ -z "$(rc2_debate_turn "$dtmp")" ] && ! rc2_debate_active "$dtmp"; then ok "no .debate_turn ⇒ debate inactive (hook gate inert when off)"
+  else bad "debate inactive with no .debate_turn file"; fi
+  printf 'solver' > "$dtmp/logs/.debate_turn"
+  [ "$(rc2_debate_turn "$dtmp")" = "solver" ] && ok "a .debate_turn file activates the gate" || bad "a .debate_turn file activates the gate"
+  rm -rf "$dtmp"
+else
+  bad "debate helper checks (skipped — bootstrap did not source)"
+fi
+# the hook must invoke the gate in BOTH phases (pre block + post turn-flip)
+if grep -q 'rc2_debate_gate' lib/hook_log.sh && grep -q '\.debate_turn' lib/hook_log.sh; then
+  ok "hook wires the debate gate (pre-block + post turn-flip)"
+else bad "hook wires the debate gate"; fi
+# the shared driver module must carry open→turn→close + the atomic ownership claim (race prevention)
+if [ -s scripts/lib/debate.sh ]; then
+  ddrv=""
+  for fn in rc2_debate_claim rc2_debate_parse rc2_debate_open_if_stuck rc2_debate_service rc2_debate_finish; do
+    grep -q "^$fn()" scripts/lib/debate.sh || ddrv+="$fn "
+  done
+  assert_empty "scripts/lib/debate.sh carries the shared driver (claim→open→turn→close)" "missing fn" "$ddrv"
+else bad "scripts/lib/debate.sh present"; fi
+# BOTH sidecars must configure the shared driver for their role (so either can be the first initiator)
+rolecfg=""
+grep -q 'RC2_DBG_ROLE="oversee"' scripts/oversee.sh || rolecfg+="oversee-role "
+grep -q 'rc2_sidecar_stuck_check' scripts/oversee.sh || rolecfg+="oversee-stuckcheck "
+grep -q 'RC2_DBG_ROLE="auditor"' scripts/auditor.sh || rolecfg+="auditor-role "
+grep -q 'rc2_debate_open_if_stuck' scripts/auditor.sh || rolecfg+="auditor-open "
+assert_empty "oversee + auditor each configure the shared driver for their role" "missing" "$rolecfg"
+# RACE PREVENTION: the open is an ATOMIC ownership claim that records BOTH roles (owner + who it calls)
+if grep -q 'set -o noclobber' scripts/lib/debate.sh \
+   && grep -q 'owner:$o' scripts/lib/debate.sh && grep -q 'with:"solver"' scripts/lib/debate.sh; then
+  ok "debate open atomically claims ownership + names both roles (owner → solver)"
+else bad "debate open is an atomic, role-naming ownership claim"; fi
+# and prove the claim is actually atomic: two concurrent claims on one run dir → exactly one wins
+if [ "$src_ok" = 1 ]; then
+  ( . scripts/lib/debate.sh 2>/dev/null
+    d="$(mktemp -d)"; mkdir -p "$d/logs"
+    rc2_debate_claim "$d" oversee; a=$?
+    rc2_debate_claim "$d" auditor; b=$?   # second claim must FAIL (owner already set)
+    own="$(rc2_debate_owner "$d")"; rm -rf "$d"
+    [ "$a" -eq 0 ] && [ "$b" -ne 0 ] && [ "$own" = "oversee" ]
+  ) && ok "ownership claim is atomic (first wins, second backs off — no two-critic race)" \
+    || bad "ownership claim is atomic"
+fi
+# the debate-aware shared mainloop services turns + offers the stuck-check hook
+if grep -q 'rc2_debate_service' scripts/lib/reviewer_loop.sh && grep -q 'rc2_sidecar_stuck_check' scripts/lib/reviewer_loop.sh; then
+  ok "shared mainloop is debate-aware (services turns + stuck-check hook)"
+else bad "shared mainloop is debate-aware"; fi
+# JUDGE GATE: the fixed thresholds are only a prefilter — a context-aware critic can decline (DEBATE: PASS).
+# oversee's opening lead-in must offer PASS; rc2_debate_parse must recognize it; on PASS the open must bail.
+if grep -qi 'DEBATE: PASS' scripts/oversee.sh && grep -q 'pass' scripts/lib/debate.sh; then
+  ok "stuck prefilter is judge-gated (critic may DEBATE: PASS a false positive)"
+else bad "stuck prefilter is judge-gated (DEBATE: PASS)"; fi
+if [ "$src_ok" = 1 ]; then
+  pass_ok="$(
+    . scripts/lib/debate.sh 2>/dev/null
+    rc2_reviewer_failed(){ return 1; }   # stub: never an error, so parse evaluates the verdict
+    p="$(rc2_debate_parse "$(printf 'DEBATE: PASS\nTO SOLVER: still enumerating a deep surface')")"
+    printf '%s' "${p%%$'\t'*}"
+  )"
+  [ "$pass_ok" = "pass" ] && ok "rc2_debate_parse recognizes the PASS gate verdict" || bad "rc2_debate_parse recognizes PASS" "got '$pass_ok'"
+fi
+# the round cap is wired to the env knob (default 6), not hardcoded
+if grep -q 'RC2_DEBATE_MAX_ROUNDS' scripts/oversee.sh && grep -q 'RC2_DEBATE_MAX_ROUNDS' lib/env.sh; then
+  ok "debate round cap reads RC2_DEBATE_MAX_ROUNDS (env-tunable)"
+else bad "debate round cap is env-tunable"; fi
+# env.sh must export the debate knobs so the per-call hook + sidecar inherit them
+denv="$(for v in RC2_DEBATE RC2_DEBATE_MAX_ROUNDS RC2_DEBATE_POLL RC2_DEBATE_STALL_T RC2_DEBATE_SURFACE_N RC2_DEBATE_DROUGHT_M; do
+          grep -qE "export .*$v|$v " lib/env.sh || echo "$v"; done)"
+assert_empty "env.sh defines+exports the debate knobs" "missing knob" "$denv"
+# the solver-side protocol must be in the doctrine (both the loop rule and the memory channel)
+ddoc=""
+grep -qi 'stuck-debate'   doctrine/10-hunt-loop.md     || ddoc+="10-loop "
+grep -q  '.debate_reply'  doctrine/10-hunt-loop.md     || ddoc+="10-reply-channel "
+grep -q  'debate.md'      doctrine/40-memory-and-state.md || ddoc+="40-transcript "
+assert_empty "doctrine documents the debate protocol (solver behavior + reply channel)" "missing doc" "$ddoc"
+# launch must clear stale debate state (a mid-debate crash must not block a resume)
+if grep -q '.debate_turn' hunt; then ok "hunt clears stale debate state at launch"
+else bad "hunt clears stale debate state at launch"; fi
+
+# ── 9. WIN-DISCIPLINE + RESEARCH-FLOOR (A: false-root guard · D: stop-on-solve · B: research drought) ──
+echo
+echo "[win-discipline]"
+# A — the flag-submit integrity guard: user.txt and root.txt are never equal; a value matching the OTHER
+# kind must be refused (a mis-written flags.txt would otherwise be accepted by the API as a false win).
+if grep -q 'rc2_flag_value user\|rc2_flag_value root' lib/htb.sh && grep -qi 'REFUSE' lib/htb.sh; then
+  ok "flag submit refuses root==user / user==root (A: false-root guard present)"
+else bad "flag submit has the user!=root integrity guard"; fi
+# functional: a flags.txt with root==user must NOT reach the API (guard returns before htb_submit_flag)
+if [ "$src_ok" = 1 ]; then
+  fr="$(
+    d="$(mktemp -d)"; mkdir -p "$d/logs"
+    printf 'user=%s\nroot=%s\n' "0123456789abcdef0123456789abcdef" "0123456789abcdef0123456789abcdef" > "$d/flags.txt"
+    machine_id=1 HTB_TOKEN=x
+    htb_submit_flag(){ echo "REACHED_API"; }   # stub: if the guard fails, this fires
+    _rc2_submit_flag "$d" root "0123456789abcdef0123456789abcdef" 2>/dev/null
+    grep -q REACHED_API "$d/logs/flag_submit.log" 2>/dev/null && echo LEAK || echo blocked
+    rm -rf "$d"
+  )"
+  [ "$fr" = "blocked" ] && ok "false-root (root==user) is blocked before the API (functional)" || bad "false-root blocked before the API" "got: $fr"
+fi
+# D — stop-on-solve: the attempt guard terminates a solved-but-spinning solver so the loop can teardown
+if grep -q 'rc2_solved "\$RUNDIR"' lib/run.sh && grep -qi 'run COMPLETE' lib/run.sh; then
+  ok "attempt guard stops the solver on a verified solve (D: no post-solve spin)"
+else bad "attempt guard stops on verified solve (D)"; fi
+# B-2-1 — research-drought FLOOR: trips on actions-since-any-research, not only failures-since-search
+if grep -q 'RC2_DEBATE_DROUGHT_FLOOR' scripts/oversee.sh && grep -q 'research-drought(floor)' scripts/oversee.sh \
+   && grep -q 'RC2_DEBATE_DROUGHT_FLOOR' lib/env.sh; then
+  ok "S3 has the research-drought FLOOR path (B: catches progress-on-unverified-prior)"
+else bad "S3 research-drought FLOOR path wired"; fi
+# B-1차 — doctrine requires verifying a pivotal prior-derived (inferred) claim before building on it
+if grep -qi 'pivotal claim from prior' doctrine/10-hunt-loop.md && grep -qi 'one research action' doctrine/10-hunt-loop.md; then
+  ok "doctrine requires verifying pivotal inferred claims before building on them (B-1차)"
+else bad "doctrine: verify pivotal inferred claims"; fi
+
 # ── SUMMARY ───────────────────────────────────────────────────────────────────
 echo
 if [ "$FAIL" -eq 0 ]; then

@@ -98,6 +98,7 @@ Log in to `app.hackthebox.com`, open DevTools → Network → **Save all as HAR*
 | `NO_RESTART` | 0 | `1` = run the agent once, no auto-relaunch |
 | `NO_OVERSEE` | 0 | `1` = don't start the supervisor |
 | `NO_AUDITOR` | 0 | `1` = don't start the epistemic auditor (conclusiveness gate; see [§4a](#4a-the-guard--anti-rabbit-hole-enforcement)) |
+| `NO_DEBATE` | 0 | `1` = disable the stuck-debate (the synchronous critic↔solver dialogue; see [§4b](#4b-the-stuck-debate--synchronous-dialogue-when-stuck)) |
 | `NO_STOP` | 0 | `1` = on solve, don't terminate the HTB machine (keep the box up) |
 | `VPN_AUTOFIX` | 0 | `1` = if pre-flight finds the wrong VPN server (HTB_OVPN mismatch, or target routes but is host-unreachable), auto-reconnect to `HTB_OVPN` |
 | `CYBER_MAX_RETRIES` | 10 | relaunches allowed when the agent is cyber-safeguard-flagged before the loop stops (content flags re-trip, so this caps churn) |
@@ -112,6 +113,16 @@ Log in to `app.hackthebox.com`, open DevTools → Network → **Save all as HAR*
 | `AUDITOR_FALLBACK_MODEL` | — | model the auditor retries a cyber-flagged review with (one retry); `scripts/auditor.sh` only |
 | `AUDITOR_NUDGE_ESCALATE` | 3 | hook pushes (warn) this many times for a new `auditor.md` finding, then hard-blocks (exit 2) until the solver reads it |
 | `RC2_UNTESTABLE_MAX` | 4 | materially-different inconclusive attempts on one vector before it is parked `untestable` (not refuted) |
+| `RC2_DEBATE` | 0 | `1` = enable the stuck-debate even with the guard off (else it rides the guard core, same as the surrender gate); see [§4b](#4b-the-stuck-debate--synchronous-dialogue-when-stuck) |
+| `RC2_DEBATE_MAX_ROUNDS` | 6 | max critic↔solver exchanges before the critic forces a decision (a `SUPERVISOR_TICK`) |
+| `RC2_DEBATE_POLL` | 30 | the owning critic's poll cadence (s) WHILE a debate is open — tight so turns feel live |
+| `RC2_DEBATE_MODEL` | `claude-opus-4-8` | the critic model in a debate (capped at 4.8) |
+| `RC2_DEBATE_STALL_T` | 40 | **S1** gap-stagnation: experiments since any privilege-gap movement before a debate may open **(placeholder — not yet eval-calibrated)** |
+| `RC2_DEBATE_SURFACE_N` | 60 | **S2** surface-grinding: calls piled on one surface (with no progress) that trips it **(placeholder)** |
+| `RC2_DEBATE_DROUGHT_M` | 15 | **S3** research-drought (failure path): failed experiments since the last web search that trips it **(placeholder)** |
+| `RC2_DEBATE_DROUGHT_FLOOR` | 50 | **S3** research-drought (floor path): actions since ANY web research (regardless of pass/fail) — catches progressing on unverified prior **(placeholder)** |
+| `RC2_DEBATE_COOLDOWN` | 25 | experiments that must pass after a debate closes before another may open |
+| `RC2_DEBATE_HANG` | 1800 | dead-critic safety valve (s): on the critic's turn, the hook releases the block if the owning critic hasn't moved it in this long |
 | `RC2_SURFACE_TIER2` | 0 | `1` = enable the opt-in Tier-2 inferred-surface labeler (`scripts/surface_label.sh`); Tier-1 (the per-call hook) is always on |
 | `RC2_SURFACE_TIER2_MODEL` | `haiku` | model for Tier-2 inferred labels (`sonnet` for richer judgment) |
 | `RC2_SURFACES_CONF` | `reference/surfaces.conf` | path to the optional data-driven surface-label overlay (`<regex>⇥<label>` lines) added on top of the built-in Tier-1 pack |
@@ -308,6 +319,72 @@ RC2_GUARD=block ./hunt Box          # hard enforcement from the start
 scripts/guard.sh Box show           # floor / live / effective right now
 ```
 
+## 4b. The stuck-debate — synchronous dialogue when stuck
+
+The guard above and the reviewer notes (`supervisor.md`, `auditor.md`) are **asynchronous and
+advisory** — the solver can, and sometimes does, read a "you're drifting" note and keep going. The
+**stuck-debate** is the one intervention that is **synchronous and blocking**: a critic opens a
+turn-based dialogue and the hook refuses every target-acting tool until it resolves. It exists for the
+failure the advisory channels can't stop — a solver measurably losing (DarkZeroReturns: 3000 retries of
+the same AD technique, infra perfect, no root).
+
+**When it opens (the "stuck" definition).** "Stuck" is **effort spent without the privilege gap
+closing** — never effort alone (a long scan isn't stuck) and never a single failure (that's information).
+Any one signal opens a debate; progress (a closed hop) resets all of them:
+
+| signal | opened by | meaning | knob |
+|---|---|---|---|
+| **S1** gap-stagnation | oversee | no new `worldmodel` / `confirmed_path` / loot in N experiments | `RC2_DEBATE_STALL_T` |
+| **S2** surface-grinding | oversee | one surface absorbed ≥N calls while the gap didn't move | `RC2_DEBATE_SURFACE_N` |
+| **S3** research-drought | oversee | ≥M failures since last search (failing on prior) **or** ≥FLOOR actions since *any* research (progressing on unverified prior — the subtler DarkZero case) | `RC2_DEBATE_DROUGHT_M` / `_FLOOR` |
+| **S4** inconclusive-negative | auditor | a negative the solver leans on rests on a test that never reached the mechanism | — (the auditor's own audit) |
+
+**The thresholds are a prefilter, not the decision.** A fixed number is context-blind (40 experiments with
+no closed hop is a rabbit hole on an Easy box but normal on an Insane forest mid-pivot). So when a threshold
+trips it only means *worth asking*: the **critic then reads the real evidence and judges** whether the
+solver is genuinely stuck or this is legitimately deep work — if the latter it declines (`DEBATE: PASS`) and
+nothing opens. This judgement is folded into the opening-critic call that would happen anyway (no extra
+model call), and a PASS starts the cooldown so a still-tripped prefilter doesn't re-ask every tick. Net: the
+exact threshold value is far less load-bearing — it gates *whether to ask*, the model decides *whether to
+open*. (The auditor's **S4** needs no gate — it is already a model finding.)
+
+> The threshold **numbers are placeholders** (`lib/env.sh`) — the mechanism (prefilter → judge) is wired,
+> the values await `eval/` calibration. Because the judge backstops false positives, they can be set fairly
+> sensitive.
+
+**How it runs (a dialogue, not an order).** The critic states the problem and demands a revised plan.
+The hook blocks the solver's `Bash`/`Task`/target tools and lets it only **read**, **research**
+(`WebSearch`/`WebFetch`), **revise** its own `worldmodel.md`/`hypotheses.md`, and **reply** by writing
+`logs/.debate_reply`. Writing the reply hands the turn back; the critic answers within `RC2_DEBATE_POLL`
+seconds. The solver **can push back with evidence** and the critic can concede (`RESOLVED`) — but bare
+assertion won't end it. Capped at `RC2_DEBATE_MAX_ROUNDS` (default **6**); at the cap the critic forces a
+decision. Either way the resolution is written as a `SUPERVISOR_TICK`, which the solver applies as top
+priority. The full transcript is `logs/debate.md`.
+
+**Two initiators, one owner (race-free).** Both reviewer sidecars can be the *first* to call a debate —
+oversee on S1/S2/S3, the auditor on S4. To prevent two critics from both trying to open or drive the one
+debate, opening is an **atomic ownership claim**: the first writer of `logs/.debate_owner` wins and becomes
+the sole critic, recording *which role it is* and that it is calling the **solver**; the loser backs off
+(the auditor then folds its finding into the open debate's transcript as a note instead). One debate, one
+owner, named roles.
+
+**State (plain files, per the R11 convention so the hook reads them without `jq`):**
+`logs/.debate_turn` (`solver`|`critic`; its presence = a debate is open), `logs/.debate_owner`
+(`oversee`|`auditor`), `logs/.debate_msg` (critic→solver), `logs/.debate_reply` (solver→critic),
+`logs/debate.md` (durable transcript). Structured round/outcome state is in `accounting.json .debate`.
+
+**Safety valves.** A mid-debate crash's transient files are cleared at launch (the transcript is kept),
+so a resume is never wedged. If the owning critic dies while it is its turn, the hook self-releases the
+block after `RC2_DEBATE_HANG` seconds. The debate never runs with the solver able to act on the target.
+
+**Turning it on** (same convention as the surrender gate — opt-in):
+```bash
+./hunt Box                          # default: debate OFF
+RC2_DEBATE=1 ./hunt Box             # debate on (even with the guard off)
+RC2_GUARD=warn ./hunt Box           # guard on ⇒ debate on too (rides the guard core)
+NO_DEBATE=1 RC2_GUARD=warn ./hunt Box   # guard on but debate explicitly off
+```
+
 ## 5. Sub-agents
 
 Claude Code native sub-agents in `.claude/agents/`, each on a model suited to its job. The
@@ -482,6 +559,9 @@ drive the real service with the exploit `exploit-dev` builds.
   `logs/conv.jsonl` (rendered live by `watch.sh`) and `logs/session_*.log`, not your terminal.
 - **Supervisor:** `oversee.sh` (auto) writes `supervisor.md` only when it sees drift; the solver
   follows a newer `SUPERVISOR_TICK`. Pass an operator directive: `scripts/oversee.sh <slug> "…"`.
+- **Stuck-debate (if enabled):** watch `logs/debate.md` for a live critic↔solver dialogue (and the
+  `[oversee]`/`[auditor]` sidecar panes narrate each turn). An open debate means the solver is blocked
+  by design until it resolves; `logs/.debate_owner` names which critic is driving it. See [§4b](#4b-the-stuck-debate--synchronous-dialogue-when-stuck).
 - **Flag auto-submit:** `rc2_flag_watcher` (auto, every `FLAG_INTERVAL` s — default 300 = 5 min) submits user/root flags to HTB through
   two channels — the `user=`/`root=` lines the agent writes to `flags.txt`, **and** an enforced scan
   of logged `user.txt`/`root.txt` reads (from `logs/tools.jsonl` + `logs/raw/`), so a captured flag
@@ -525,6 +605,8 @@ drive the real service with the exploit `exploit-dev` builds.
 | reviewer/agent "cyber-flagged" (safeguards) | a fresh session won't clear a content-based flag; set a `CYBER_FALLBACK_MODEL` / `OVERSEE_FALLBACK_MODEL` (less-restricted model) or apply to the Cyber Verification Program. oversee no longer writes a `supervisor.md` tick on a failed review; hunt caps cyber relaunches at `CYBER_MAX_RETRIES` |
 | agent keeps restarting | it's crashing/overflowing; check `logs/session_*.log`; `NO_RESTART=1` to stop the loop. (A usage/token-limit stop is handled separately — it backs off and resumes without burning restarts; see `RC2_USAGE_*`.) |
 | agent "spinning" / waiting on a dead box | the box likely reset/respawned to a new IP. `rc2_health_watcher` writes `target_health.md` (UP/DOWN/MOVED) and, on a new respawn IP, rewrites `target.env` + flags **TARGET MOVED**. Confirm the live IP with `scripts/machine.sh ip <name>`; a relaunch re-resolves it. (If the health watcher didn't run, check `logs/.stop` wasn't stale — `hunt` now clears it at launch.) |
+| solver blocked, every tool call refused with "STUCK-DEBATE" | expected — a critic opened a [stuck-debate](#4b-the-stuck-debate--synchronous-dialogue-when-stuck). The solver must reply in `logs/.debate_reply`; watch `logs/debate.md`. It resolves within ≤`RC2_DEBATE_MAX_ROUNDS` rounds. If the owning critic (sidecar) died, the hook auto-releases after `RC2_DEBATE_HANG` s; to end one by hand, `rm runs/<slug>/logs/.debate_turn` (and `.debate_owner`). `NO_DEBATE=1` disables the mechanism entirely. |
+| a debate won't open even though the solver looks stuck | it's opt-in — on only with the guard or `RC2_DEBATE=1`. Also check: the post-close cooldown (`RC2_DEBATE_COOLDOWN`), a stale `logs/.debate_owner` left by a crash (cleared at launch), or thresholds not yet reached (defaults are **uncalibrated placeholders** — lower `RC2_DEBATE_STALL_T` etc. to test). |
 | attempt hangs / looks paused | a long attempt is silent in the main terminal by design; the watchdog emits a `[hunt] attempt N live …` heartbeat and kills a cyber-spin (`RC2_CYBER_SPIN`) or no-output wedge (`RC2_HANG_KILL`). Watch `scripts/watch.sh` for the real activity |
 | supervisor burning tokens | `NO_OVERSEE=1 ./hunt …` or raise `OVERSEE_INTERVAL` |
 | Burp tools missing | `scripts/burp.sh up` before `./hunt`; needs `BURP_MCP_TOKEN` |

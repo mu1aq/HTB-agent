@@ -85,3 +85,53 @@ rc2_is_frozen() {
 # `|| RC2_GUARD_WATCH=1` plus their own NO_* opt-out; oversee's gate predicate is exactly this core
 # (it deliberately omits GUARD_WATCH — watch is judge-only and must not arm the live gate).
 rc2_guard_core_on() { [ "${RC2_GUARD:-off}" != "off" ] || [ "${RC2_GATE:-0}" = "1" ]; }
+
+# ── stuck-debate channel (synchronous, turn-based critic↔solver dialogue) ──────────────────────────
+# A debate is a blocking, bidirectional conversation opened by oversee ONLY when the solver is stuck:
+# oversee critiques, the solver may rebut/ask/revise, up to RC2_DEBATE_MAX_ROUNDS, until oversee RESOLVEs
+# or forces a decision. While a debate is OPEN the hook blocks the solver's target-acting tools and only
+# lets it read/research and write its reply + planning files — so the dialogue cannot be ignored.
+# State convention (R11): the hook must read these WITHOUT jq, fast and robustly, so they are PLAIN files:
+#   logs/.debate_turn   — "solver" | "critic"  (presence of a non-empty file == a debate is OPEN)
+#   logs/.debate_msg    — the critic's current message to the solver (the hook injects this)
+#   logs/.debate_reply  — the solver's current response (oversee reads this; the solver writes it)
+#   logs/debate.md       — durable transcript, both sides, append-only (resume memory; oversee owns it)
+# Structured round/outcome state lives in accounting.json .debate (oversee manages it with jq).
+
+# rc2_debate_turn <rundir> — echo "solver" | "critic" | "" (no open debate). Dependency-free.
+rc2_debate_turn() {
+  local f="${1:-.}/logs/.debate_turn" t
+  [ -s "$f" ] || { echo ""; return 0; }
+  t="$(tr -cd 'a-z' < "$f" 2>/dev/null)"
+  case "$t" in solver|critic) echo "$t";; *) echo "";; esac
+}
+
+# rc2_debate_active <rundir> — true(0) iff a debate is open.
+rc2_debate_active() { [ -n "$(rc2_debate_turn "$1")" ]; }
+
+# rc2_debate_owner <rundir> — echo the critic role that OWNS the open debate ("oversee" | "auditor" | "").
+# Set atomically at open-time (see scripts/lib/debate.sh); the hook reads it only to name the critic.
+rc2_debate_owner() { local f="${1:-.}/logs/.debate_owner"; [ -s "$f" ] && tr -cd 'a-z' < "$f" 2>/dev/null; }
+
+# rc2_debate_allowed <turn> <tool> <file_path> — true(0) if this tool call is permitted DURING a debate.
+# solver turn: read/research freely + write ONLY the reply/planning files (so it can rebut + revise, never
+#   act on the target). critic turn: read-only (it waits; it may re-read context, nothing else).
+# Everything else (Bash, Task, target MCP, writing exploit code) is blocked. Dependency-free; default-deny.
+rc2_debate_allowed() {
+  local turn="$1" tool="$2" fp="$3"
+  case "$tool" in
+    Read|Glob|Grep|NotebookRead|LS|TodoWrite) return 0 ;;
+  esac
+  [ "$turn" = "solver" ] || return 1   # critic turn (solver waiting): only the read-family above
+  case "$tool" in
+    WebSearch|WebFetch) return 0 ;;     # research during the solver's turn is encouraged (addresses drought)
+    Write|Edit|MultiEdit)
+      case "$fp" in
+        */.debate_reply|.debate_reply|*/debate.md|debate.md \
+        |*/hypotheses.md|hypotheses.md|*/worldmodel.md|worldmodel.md \
+        |*/journal.md|journal.md|*/ledger.json|ledger.json) return 0 ;;
+        *) return 1 ;;
+      esac ;;
+  esac
+  return 1
+}

@@ -9,3 +9,4 @@ path | mechanical action | inputs -> output | from-run
 -----|-------------------|------------------|--------
 (empty — populated as hunts build reusable primitives)
 ```
+- nxc_backupop_bootkey.py — nxc module: read Windows SYSLKEY/bootkey via rrp backup-open (REG_OPTION_BACKUP_RESTORE) class-name reads of HKLM\SYSTEM\CCS\Control\Lsa\{JD,Skew1,GBG,Data}, for a Backup Operators principal when the large SYSTEM-hive SMB3 download corrupts. From DarkZeroReturns.

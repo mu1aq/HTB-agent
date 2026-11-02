@@ -43,6 +43,15 @@ same way (a `<tmux_base>_auditor` tmux session) and audits **evidence quality** 
 strategy — it catches a vector abandoned on an inconclusive result and pushes the solver to re-open
 it. `NO_AUDITOR=1` disables it; `AUDITOR_INTERVAL=300` tunes the cadence.
 
+**The one-way notes become a two-way dialogue when the solver is stuck.** supervisor.md / auditor.md
+are advisory; the **stuck-debate** is a *synchronous, blocking* conversation a critic opens only when
+the harness measures the solver is stuck (effort with no movement in the privilege gap). The hook
+blocks every target action and the solver can only read, research, revise its board, and **reply** —
+turn by turn, up to 6 rounds — so it cannot be ignored, and the solver **can push back with evidence**
+(it's a dialogue, not an order). Either sidecar can be the first to call a debate (oversee on a
+strategy signal, the auditor on an evidence signal); an atomic ownership claim makes that race-free.
+Opt-in: on with the guard, or `RC2_DEBATE=1`; `NO_DEBATE=1` forces off. See **Oversight & memory**.
+
 Re-run the same target to **resume** — state lives on disk, not in the transcript. Add
 `--fresh` to archive the old run and start clean. A crash or context overflow mid-hunt
 **auto-relaunches** and resumes from disk (budget `MAX_RESTARTS`, default 20; `NO_RESTART=1`
@@ -142,6 +151,8 @@ redcat2/
     install_tools.sh         one-shot Kali toolset install (core|max|--check)
     conv_fmt.py              stream-json -> readable transcript
     auto_pr.sh               optional dev Stop-hook: branch->PR->merge (personal, gitignored)
+    lib/reviewer_loop.sh     shared sidecar scaffolding (env/cache, arg-parse, debate-aware main loop)
+    lib/debate.sh            shared stuck-debate driver (atomic ownership, open/turn/close) — oversee + auditor
     lib/htb_api.sh           HTB API client (resolve/spawn/submit, name->id)
   tools/env-setting/
     set_token_from_har.sh    HAR -> aud:6 labs token -> .env
@@ -166,6 +177,8 @@ runs/<slug>/
   writeup.md                 narrative + metrics (report.sh)   failure_analysis.md/.json (analyze_run.sh)
   supervisor.md              reviewer verdicts, if oversee.sh is running (solver follows it)
   auditor.md                 conclusiveness-audit findings, if auditor.sh is running (hook pushes the solver to read it)
+  debate.md                  stuck-debate transcript (critic↔solver dialogue); logs/.debate_{turn,msg,reply,owner} are its live state
+
   status.md                  auto snapshot of the current situation, refreshed every ~10 min
   target_health.md           auto UP/DOWN/MOVED box signal (read on mass connection failures)
   recon/ enum/ loot/ exploit/ reversing/ research/ tools/ bin/ notes/ cache/   raw evidence (+ run-local scratch)
@@ -222,6 +235,22 @@ are installed separately by you; `~/.local/bin/{ida,idat}` wrappers point at the
   abandoned on an **inconclusive** result (a test that FAULTed / timed out / was blocked and never
   ran). On a mismatch it writes `auditor.md` and the hook **pushes** the solver to read it (warn →
   hard block if ignored). It is the mid-run, finer-grained counterpart to the surrender gate below.
+- **Stuck-debate** (**opt-in**; on with the guard or `RC2_DEBATE=1`, `NO_DEBATE=1` off) — the
+  *synchronous, blocking* escalation of the one-way notes above. When the harness measures the solver is
+  stuck — effort piling up with **no movement in the privilege gap** — a critic opens a turn-based
+  dialogue and the hook **blocks** every target-acting tool (`exit 2`); the solver may only read, research,
+  revise its board, and write its turn to `logs/.debate_reply`. It is a dialogue between peers: the solver
+  can **rebut with evidence** and the critic can concede, but bare assertion will not end it. Signals:
+  **S1** gap-stagnation, **S2** surface-grinding, **S3** research-drought (oversee), **S4** a negative
+  resting on inconclusive evidence (auditor). **Either sidecar can be the first to call a debate**, and the
+  opener atomically claims ownership and names the role it is calling (critic → solver) so two critics can
+  never race to drive one debate. Capped at `RC2_DEBATE_MAX_ROUNDS` (default **6**), then the critic forces
+  a decision; the resolution lands as a `SUPERVISOR_TICK`. Transcript: `logs/debate.md`. Safety valves: a
+  mid-debate crash's state is cleared at launch, and an unresponsive critic auto-releases the block
+  (`RC2_DEBATE_HANG`). The S1/S2/S3 thresholds are only a **cheap prefilter** — when one trips the critic
+  reads the real evidence and judges whether to actually open (declining a false positive with `DEBATE:
+  PASS`), so a context-blind number never decides alone and the exact value is far less load-bearing.
+  Thresholds are wired but **not yet eval-calibrated** (placeholders in `lib/env.sh`).
 - **The guard** (**opt-in — off by default**) — mechanical enforcement of the evidence-budget doctrine,
   covering **both** ways a hard box is lost. *Against over-grinding:* a per-call **hook** (repeat / stall
   / ceiling / frozen → warn or block, one-shot override), an out-of-band **sameness judge** (sonnet/haiku

@@ -223,6 +223,16 @@ _rc2_attempt_guard() {
   while kill -0 "$pid" 2>/dev/null; do
     sleep "$tick"; kill -0 "$pid" 2>/dev/null || break
     now=$(date +%s); el=$((now-start))
+    # stop-on-solve: once the box is GENUINELY owned (both flags present, and — in API mode — both ACCEPTED
+    # by the lab), the win is banked and any further solver activity is wasted compute. The run loop already
+    # breaks on rc2_solved AFTER `wait` returns (run.sh) — but a solved solver often keeps spinning and never
+    # exits, so `wait` never returns. Terminate it here so the loop regains control, confirms the solve, and
+    # runs the proper teardown (report/analyze + HTB machine terminate + tmux). Fires once; .stop halts the watchers.
+    if rc2_solved "$RUNDIR" 2>/dev/null; then
+      printf '\033[32m[hunt] attempt %d — both flags captured + accepted; run COMPLETE. Stopping the solver (no reason to keep spinning).\033[0m\n' "$attempt" | tee -a "$LOG"
+      touch "$RUNDIR/logs/.stop" 2>/dev/null
+      pkill -TERM -P "$pid" 2>/dev/null; kill -TERM "$pid" 2>/dev/null; return 0
+    fi
     size=$(wc -c < "$conv" 2>/dev/null || true); size=${size:-0}
     [ "$size" != "$last_size" ] && { last_size=$size; last_change=$now; }
     cyc=$(grep -c '\[cyber\]' "$conv" 2>/dev/null || true); cyc=$(( ${cyc:-0} - cyber0 )); [ "$cyc" -lt 0 ] && cyc=0
@@ -736,7 +746,9 @@ rc2_stop_sidecar() { tmux kill-session -t "${tmux_base}_$1" 2>/dev/null || true;
 # pre-existing tmux server would not inherit it.
 rc2_launch_oversee() {
   local rundir="$1" slug; slug="$(basename "$rundir")"
-  local ocmd="RC2_GATE='${RC2_GATE:-}' RC2_GUARD='${RC2_GUARD:-off}' RC2_GATE_N='${RC2_GATE_N:-}' RC2_GATE_MODE='${RC2_GATE_MODE:-}' OVERSEE_INTERVAL='${OVERSEE_INTERVAL:-600}' scripts/oversee.sh '$slug'"
+  # stuck-debate env is passed explicitly too — a pre-existing tmux server would not inherit it, and
+  # whether oversee opens debates (and the round/poll/threshold knobs) must match the launch env.
+  local ocmd="RC2_GATE='${RC2_GATE:-}' RC2_GUARD='${RC2_GUARD:-off}' RC2_GATE_N='${RC2_GATE_N:-}' RC2_GATE_MODE='${RC2_GATE_MODE:-}' OVERSEE_INTERVAL='${OVERSEE_INTERVAL:-600}' RC2_DEBATE='${RC2_DEBATE:-0}' NO_DEBATE='${NO_DEBATE:-0}' RC2_DEBATE_MAX_ROUNDS='${RC2_DEBATE_MAX_ROUNDS:-6}' RC2_DEBATE_POLL='${RC2_DEBATE_POLL:-30}' RC2_DEBATE_MODEL='${RC2_DEBATE_MODEL:-claude-opus-4-8}' RC2_DEBATE_STALL_T='${RC2_DEBATE_STALL_T:-40}' RC2_DEBATE_SURFACE_N='${RC2_DEBATE_SURFACE_N:-60}' RC2_DEBATE_DROUGHT_M='${RC2_DEBATE_DROUGHT_M:-15}' RC2_DEBATE_COOLDOWN='${RC2_DEBATE_COOLDOWN:-25}' scripts/oversee.sh '$slug'"
   rc2_launch_sidecar oversee "${NO_OVERSEE:-0}" "$ocmd"
 }
 rc2_stop_oversee() { rc2_stop_sidecar oversee; }
@@ -744,7 +756,8 @@ rc2_stop_oversee() { rc2_stop_sidecar oversee; }
 # epistemic auditor — evidence-quality reviewer -> auditor.md (hook pushes the solver).
 rc2_launch_auditor() {
   local rundir="$1" slug; slug="$(basename "$rundir")"
-  local acmd="AUDITOR_INTERVAL='${AUDITOR_INTERVAL:-420}' AUDITOR_MODEL='${AUDITOR_MODEL:-claude-opus-4-8}' scripts/auditor.sh '$slug'"
+  # the auditor is a SECOND possible debate initiator (S4), so it needs the same debate env as oversee.
+  local acmd="AUDITOR_INTERVAL='${AUDITOR_INTERVAL:-420}' AUDITOR_MODEL='${AUDITOR_MODEL:-claude-opus-4-8}' RC2_GUARD='${RC2_GUARD:-off}' RC2_GATE='${RC2_GATE:-}' RC2_DEBATE='${RC2_DEBATE:-0}' NO_DEBATE='${NO_DEBATE:-0}' RC2_DEBATE_MAX_ROUNDS='${RC2_DEBATE_MAX_ROUNDS:-6}' RC2_DEBATE_POLL='${RC2_DEBATE_POLL:-30}' RC2_DEBATE_MODEL='${RC2_DEBATE_MODEL:-claude-opus-4-8}' RC2_DEBATE_COOLDOWN='${RC2_DEBATE_COOLDOWN:-25}' scripts/auditor.sh '$slug'"
   rc2_launch_sidecar auditor "${NO_AUDITOR:-0}" "$acmd"
 }
 rc2_stop_auditor() { rc2_stop_sidecar auditor; }

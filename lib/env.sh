@@ -56,6 +56,33 @@ rc2_load_env() {
   : "${RC2_UNTESTABLE_MAX:=4}"        # materially-different INCONCLUSIVE attempts on one vector before it is PARKED (untestable), not refuted
   export AUDITOR_INTERVAL AUDITOR_MODEL AUDITOR_NUDGE_ESCALATE RC2_UNTESTABLE_MAX
 
+  # ── stuck-debate channel (synchronous critic↔solver dialogue, opened only when stuck) ───────────
+  # oversee opens a BLOCKING, turn-based debate when it detects the solver is stuck; the hook blocks the
+  # solver's target actions and only lets it read/research + write its reply, so the dialogue can't be
+  # ignored. The solver may rebut with evidence — it's a dialogue, not a one-way order. Capped at
+  # RC2_DEBATE_MAX_ROUNDS, then oversee forces a decision (a SUPERVISOR_TICK). On by RC2_DEBATE=1 or
+  # whenever a guard layer is on (same convention as the surrender gate); NO_DEBATE=1 forces it off.
+  : "${RC2_DEBATE:=0}"              # 1 = enable the debate gate even with the guard off (else it rides the guard core)
+  : "${RC2_DEBATE_MAX_ROUNDS:=6}"  # max critic↔solver exchanges before oversee forces a decision
+  : "${RC2_DEBATE_POLL:=30}"       # oversee's poll cadence (s) WHILE a debate is open — tight, so turns feel live
+  : "${RC2_DEBATE_MODEL:=claude-opus-4-8}" # the critic in a debate (capped at 4.8, same as oversee)
+  # "Stuck" = effort spent without the privilege gap closing. These thresholds are a CHEAP PREFILTER, not
+  # the decision: when one trips, oversee asks the critic (opus, context-aware) to JUDGE whether the solver
+  # is really stuck or this is legitimately deep work — the critic can decline (DEBATE: PASS). So a single
+  # number no longer has to be "right" for every box; it only has to decide "worth asking". Because the
+  # judge backstops false positives, these can be set fairly SENSITIVE. The NUMBERS are placeholders
+  # (uncalibrated) — tune against eval/; the mechanism (prefilter → judge) is what's wired.
+  : "${RC2_DEBATE_STALL_T:=40}"    # S1 gap-stagnation: experiments since last progress before the critic is ASKED
+  : "${RC2_DEBATE_SURFACE_N:=60}"  # S2 surface-grinding: calls piled on ONE surface (with no progress) before ASKING
+  : "${RC2_DEBATE_DROUGHT_M:=15}"  # S3 research-drought (FAILURE path): failed experiments since the last web search before ASKING
+  : "${RC2_DEBATE_DROUGHT_FLOOR:=50}" # S3 research-drought (FLOOR path): actions since ANY web research, regardless of
+                                   # failures — catches "progressing steadily on UNVERIFIED PRIOR knowledge, never looking
+                                   # anything up" (the DarkZero breakthrough was external research the solver never ran).
+                                   # judge-gated like the rest: the critic PASSes if the box genuinely needed no research.
+  : "${RC2_DEBATE_COOLDOWN:=25}"   # experiments that must pass after a debate closes before another may open
+  : "${RC2_DEBATE_HANG:=1800}"     # dead-critic safety valve: on the critic's turn, release the block if oversee hasn't moved it in this many seconds
+  export RC2_DEBATE RC2_DEBATE_MAX_ROUNDS RC2_DEBATE_POLL RC2_DEBATE_MODEL RC2_DEBATE_STALL_T RC2_DEBATE_SURFACE_N RC2_DEBATE_DROUGHT_M RC2_DEBATE_DROUGHT_FLOOR RC2_DEBATE_COOLDOWN RC2_DEBATE_HANG
+
   # ── surface labeling (A3) ──────────────────────────────────────────────────────
   # Tier-1 (the per-call hook, _hook_surface) is always on, deterministic, multi-label. Tier-2 is the
   # OPT-IN out-of-band model pass that adds INFERRED labels (privesc-candidate, auth-bypass-surface, …)
@@ -74,7 +101,8 @@ rc2_load_env() {
   : "${CLAUDE_CODE_PROMPT_CACHE_TTL:=1h}"            # orchestrator main conversation
   : "${CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL:=1h}"  # researcher/reverser/exploit-dev/... reuse their stable prefix
   : "${DISABLE_AUTOUPDATER:=1}"                      # an auto-update between relaunches would cost a cold turn
-  export CLAUDE_CODE_PROMPT_CACHE_TTL CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL DISABLE_AUTOUPDATER
+  : "${CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS:=0}"    # never kill background tasks (subagents, long shell commands) on a timeout
+  export CLAUDE_CODE_PROMPT_CACHE_TTL CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL DISABLE_AUTOUPDATER CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
 }
 
 # rc2_pin_model <requested> — cap OPUS at 4.8, leave every other model alone. Policy (operator has CVP,

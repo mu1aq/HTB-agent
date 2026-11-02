@@ -45,6 +45,16 @@ GATE=0; rc2_guard_core_on && GATE=1   # core = floor(RC2_GUARD!=off) or RC2_GATE
 GATE_N="${RC2_GATE_N:-2}"
 GATE_MODE="${RC2_GATE_MODE:-block}"
 
+# ── stuck-debate (synchronous critic↔solver dialogue; opened only when the solver is stuck) ──────────
+# On by RC2_DEBATE=1 or whenever a guard layer is on (same convention as the surrender gate); NO_DEBATE=1
+# forces off. oversee is the SOLE driver of the turn protocol: it opens a debate on a stuck signal, writes
+# the critic's side, reads the solver's logs/.debate_reply each turn, and closes with RESOLVED or a forced
+# decision after DMAX rounds. The hook does the blocking; oversee does the thinking.
+DMAX="${RC2_DEBATE_MAX_ROUNDS:-6}"
+DPOLL="${RC2_DEBATE_POLL:-30}"
+DMODEL="${RC2_DEBATE_MODEL:-$MODEL}"
+DEBATE_ON=0; { [ "${NO_DEBATE:-0}" != "1" ] && { [ "${RC2_DEBATE:-0}" = "1" ] || rc2_guard_core_on; }; } && DEBATE_ON=1
+
 build_digest(){
   local tj="$RUNDIR/logs/tools.jsonl" elapsed="?" now; now=$(date +%s)
   [ -f "$RUNDIR/logs/meta.env" ] && { . "$RUNDIR/logs/meta.env" 2>/dev/null; [ -n "${start_epoch:-}" ] && elapsed="$(( (now-start_epoch)/60 ))m"; }
@@ -135,6 +145,110 @@ _oversee_gate(){
   fi
 }
 
+# ── stuck detection: "effort spent without the privilege gap closing" ────────────────────────────────
+# Reads only the harness counters (accounting.json) + tools.jsonl — never the solver's self-assessment.
+# Echoes "<SIGNAL> <one-line evidence seed>" when a debate SHOULD open, else nothing. Debounced by a
+# post-close cooldown so debates don't chain. NUMBERS are placeholders (see env.sh) — the mechanism is
+# what's wired here; the thresholds await eval calibration. Priority: S3 (most actionable) > S2 > S1.
+_oversee_stuck(){
+  local acct="$RUNDIR/logs/accounting.json" tj="$RUNDIR/logs/tools.jsonl"
+  [ -s "$acct" ] || { echo ""; return 0; }
+  local exp lastp lastclose since
+  exp="$(jq -r '.global.experiments // 0' "$acct" 2>/dev/null)"; exp="${exp:-0}"
+  lastp="$(jq -r '.progress.last_progress_experiment // 0' "$acct" 2>/dev/null)"; lastp="${lastp:-0}"
+  lastclose="$(jq -r '.debate.last_close_exp // -100000' "$acct" 2>/dev/null)"; lastclose="${lastclose:--100000}"
+  [ $((exp - lastclose)) -ge "${RC2_DEBATE_COOLDOWN:-25}" ] 2>/dev/null || { echo ""; return 0; }
+  since=$((exp - lastp))
+  # S3 — research drought. Two paths, both "operating on prior without checking it":
+  #   (a) FAILURE path: >= M recent FAILED experiments with no web research interleaved (actively failing,
+  #       never looking anything up — the original DarkZero-style signal).
+  #   (b) FLOOR path: >= FLOOR actions since ANY web research, regardless of pass/fail — catches the subtler
+  #       case where the solver PROGRESSES steadily on unverified prior knowledge and never researches (the
+  #       real DarkZero solve leaned on external forest-trust research the solver never actually ran; a
+  #       failure-only signal can't see it). "Research" = WebSearch/WebFetch or a `researcher` sub-agent Task.
+  # ts strings are lexically ordered → compare directly. Both are judge-gated downstream (critic may PASS).
+  if [ -f "$tj" ]; then
+    local last_research
+    last_research="$(jq -r 'select(.event=="pre" and (.tool=="WebSearch" or .tool=="WebFetch" or (.tool=="Task" and ((.input.subagent_type // "")=="researcher")))) | .ts' "$tj" 2>/dev/null | tail -1)"
+    # (a) failure path
+    local m="${RC2_DEBATE_DROUGHT_M:-15}" fails nfails first_fail
+    fails="$(jq -r 'select(.event=="post" and (.exit!=null) and (.exit!=0)) | .ts' "$tj" 2>/dev/null | tail -n "$m")"
+    nfails="$(printf '%s\n' "$fails" | grep -c . )"
+    if [ "${nfails:-0}" -ge "$m" ] 2>/dev/null; then
+      first_fail="$(printf '%s\n' "$fails" | head -1)"
+      if [ -z "$last_research" ] || [ "$last_research" \< "$first_fail" ]; then
+        echo "S3 research-drought: $nfails recent experiments FAILED with no web research since — operating purely on prior, and it isn't working (doctrine 20)."; return 0
+      fi
+    fi
+    # (b) floor path — actions since the last research action (counted over tools.jsonl pre-events)
+    local floor="${RC2_DEBATE_DROUGHT_FLOOR:-50}" since_research
+    if [ -z "$last_research" ]; then
+      since_research="$(jq -r 'select(.event=="pre") | .ts' "$tj" 2>/dev/null | wc -l | tr -d ' ')"
+    else
+      since_research="$(jq -r --arg t "$last_research" 'select(.event=="pre" and .ts > $t) | .ts' "$tj" 2>/dev/null | wc -l | tr -d ' ')"
+    fi
+    if [ "${since_research:-0}" -ge "$floor" ] 2>/dev/null; then
+      echo "S3 research-drought(floor): $since_research actions since any web research (none this run / long stale) — the solver may be building its chain on UNVERIFIED PRIOR knowledge; a pivotal inferred claim should be checked against a live source (doctrine 10 → verify pivotal inferred claims / 20)."; return 0
+    fi
+  fi
+  # S2 — surface grinding: one surface has absorbed >= N calls while the gap has not moved (needs SOME
+  # stagnation so broad early enumeration never trips it).
+  local topn topname
+  topn="$(jq -r '.surfaces // {} | to_entries | (max_by(.value) // {value:0}) | .value' "$acct" 2>/dev/null)"; topn="${topn:-0}"
+  topname="$(jq -r '.surfaces // {} | to_entries | (max_by(.value) // {key:"?"}) | .key' "$acct" 2>/dev/null)"
+  if [ "$topn" -ge "${RC2_DEBATE_SURFACE_N:-60}" ] 2>/dev/null && [ "$since" -ge $(( ${RC2_DEBATE_STALL_T:-40} / 2 )) ] 2>/dev/null; then
+    echo "S2 surface-grinding: surface '$topname' absorbed $topn calls while the privilege gap has not moved in $since experiments (doctrine 10 → conclusiveness, not effort)."; return 0
+  fi
+  # S1 — gap stagnation (master signal): no new verified fact / confirmed-path rung / loot in T experiments.
+  if [ "$since" -ge "${RC2_DEBATE_STALL_T:-40}" ] 2>/dev/null; then
+    echo "S1 gap-stagnation: $since experiments since any movement in worldmodel / confirmed_path / loot — time is passing but the privilege gap isn't closing (doctrine 10 → orient by the privilege delta)."; return 0
+  fi
+  echo ""
+}
+
+# build_debate_digest — the (lighter) context handed to the critic each debate turn. Includes the stuck
+# signal, the running transcript, the solver's latest reply, and the living board.
+build_debate_digest(){
+  local acct="$RUNDIR/logs/accounting.json"
+  rc2_load_target "$RUNDIR" 2>/dev/null || true
+  local round sig surf
+  round="$(jq -r '.debate.round // 1' "$acct" 2>/dev/null)"; round="${round:-1}"
+  sig="$(jq -r '.debate.seed // "(stuck)"' "$acct" 2>/dev/null)"
+  surf="$(jq -r '.surfaces // {} | to_entries[]? | "  \(.key): \(.value)"' "$acct" 2>/dev/null | sort -t: -k2 -rn | head -14)"
+  echo "# STUCK-DEBATE — the solver is BLOCKED pending this dialogue (round $round/$DMAX)"
+  echo "machine=${machine_name:-$NAME} ip=${target_ip:-?} os=${os_hint:-?} difficulty=${difficulty:-?}"
+  echo
+  echo "## why this debate opened (the stuck signal the harness measured)"; echo "  $sig"
+  echo
+  echo "## transcript so far (newest at the bottom)"; sed 's/^/  /' "$RUNDIR/logs/debate.md" 2>/dev/null | tail -120
+  echo
+  echo "## the solver's latest reply (logs/.debate_reply)"
+  if [ -s "$RUNDIR/logs/.debate_reply" ]; then sed 's/^/  /' "$RUNDIR/logs/.debate_reply" 2>/dev/null | head -80; else echo "  (none yet — this is the OPENING turn; state the problem + what you demand)"; fi
+  echo
+  echo "## worldmodel.md (privilege map + verified facts)"; sed 's/^/  /' "$RUNDIR/worldmodel.md" 2>/dev/null | head -90
+  echo
+  echo "## hypotheses.md (the board)"; sed 's/^/  /' "$RUNDIR/hypotheses.md" 2>/dev/null | head -90
+  echo
+  echo "## per-surface effort (calls; a lopsided pile = a surface ground or a surface untouched)"; echo "${surf:-  (none)}"
+}
+
+# The debate DRIVER (open/turn/close/ownership) is shared in scripts/lib/debate.sh; oversee configures it
+# for its role via the RC2_DBG_* globals below and provides the strategy stuck-check. The auditor does the
+# same for its own role — whichever sidecar detects a stuck signal FIRST atomically claims the one debate.
+export RC2_DBG_ON="$DEBATE_ON" RC2_DBG_ROLE="oversee" RC2_DBG_MODEL="$DMODEL" RC2_DBG_SYS="$SYS" \
+       RC2_DBG_HIST="$HIST" RC2_DBG_MAX="$DMAX" RC2_DBG_POLL="$DPOLL" RC2_DBG_DIGEST_FN="build_debate_digest"
+RC2_DBG_LEADIN_OPEN="A cheap COUNTER (fixed thresholds) flagged a POSSIBLE stuck signal — it can only count effort, it cannot see context. YOU are the judge: read the actual evidence (the signal seed, the board, the privilege map, the recent journal/logs — Read/Glob/Grep as needed) and decide whether the solver is GENUINELY stuck enough to justify BLOCKING it. If this is legitimately deep work on a complex surface, a long-running scan, or a chain that is still advancing, it is a FALSE POSITIVE — output 'DEBATE: PASS' and a one-line reason, and do NOT open. ONLY if it is really stuck, OPEN the debate (you, the strategy critic, calling the SOLVER): do NOT praise; name the dead/over-ground paths and the untested high-value lever, and demand a specific revised plan or an evidence-backed rebuttal. Output EXACTLY the debate verdict format (DEBATE: PASS|CONTINUE, then TO SOLVER:)."
+RC2_DBG_LEADIN_TURN="You are MID-debate with the solver. Read its latest reply above. If it has produced a sound, evidence-grounded revised plan (or convinced you its current path is right), RESOLVE. Otherwise keep pressing — say exactly what is still wrong and what you need. Do not concede to assertion without evidence, and do not nag a solver that has actually answered. Output EXACTLY the debate verdict format (DEBATE: CONTINUE|RESOLVED, then TO SOLVER:)."
+export RC2_DBG_LEADIN_OPEN RC2_DBG_LEADIN_TURN
+
+# rc2_sidecar_stuck_check — the open hook the shared mainloop calls each normal tick (see reviewer_loop.sh).
+# oversee opens on a STRATEGY stuck signal (S1/S2/S3). The atomic claim in rc2_debate_open_if_stuck makes
+# it race-free against the auditor opening on its own signal at the same moment.
+rc2_sidecar_stuck_check(){
+  local s; s="$(_oversee_stuck)"; [ -n "$s" ] || return 0
+  rc2_debate_open_if_stuck "${s%% *}" "${s#* }"
+}
+
 assess(){
   local rev="$1" digest verdict ts status cur new rc intervened
   digest="$(build_digest)"
@@ -191,4 +305,8 @@ echo "${d}   reviews on each new activity; writes $SUP ONLY on drift/rabbit-hole
 [ -n "$OP_NOTE" ] && echo "${y}   operator directive active:${n} $OP_NOTE ${d}(relayed to solver until followed)${n}"
 if [ "$GATE" = "1" ]; then echo "${y}   weighted gate ON:${n} ${GATE_N} consecutive same-focus rabbit-holes → live guard '${GATE_MODE}' (re-asserted; never below operator floor)"
 else echo "${d}   weighted gate off (advisory only; set RC2_GATE=1 or RC2_GUARD=warn|block to enable auto-escalation)${n}"; fi
+if [ "$DEBATE_ON" = "1" ]; then echo "${y}   stuck-debate ON:${n} oversee calls the solver on a strategy signal (S1 gap-stagnation / S2 surface-grind / S3 research-drought) → BLOCKS it and runs a turn-based dialogue (≤${DMAX} rounds, poll ${DPOLL}s). The auditor may open its own on an evidence signal — whoever is first atomically owns it."
+else echo "${d}   stuck-debate off (set RC2_DEBATE=1 or RC2_GUARD=warn|block; NO_DEBATE=1 forces off)${n}"; fi
+# the shared mainloop is debate-aware: it drives a debate turn each tight poll while one is open (owner-only),
+# runs the normal activity-gated review otherwise, and calls rc2_sidecar_stuck_check (above) to open one.
 rc2_reviewer_mainloop "$RUNDIR" "$INTERVAL" assess oversee

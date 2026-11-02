@@ -35,6 +35,47 @@ HIST="$RUNDIR/logs/auditor.jsonl"
 SYS="$ROOT/AUDITOR.md"
 mkdir -p "$RUNDIR/logs"
 
+# ── stuck-debate (the auditor as a SECOND possible initiator) ────────────────────────────────────────
+# oversee opens on strategy signals (S1/S2/S3); the auditor opens on its OWN signal — S4, a negative the
+# solver is leaning on that rests on INCONCLUSIVE evidence (premature surrender on a live vector). Whichever
+# sidecar detects first ATOMICALLY claims the single debate (owner tag) and becomes its sole critic; the
+# other then only contributes notes. Same on/off convention as oversee. Shared driver in scripts/lib/debate.sh.
+DMAX="${RC2_DEBATE_MAX_ROUNDS:-6}"; DPOLL="${RC2_DEBATE_POLL:-30}"; DMODEL="${RC2_DEBATE_MODEL:-$MODEL}"
+DEBATE_ON=0; { [ "${NO_DEBATE:-0}" != "1" ] && { [ "${RC2_DEBATE:-0}" = "1" ] || rc2_guard_core_on; }; } && DEBATE_ON=1
+export RC2_DBG_ON="$DEBATE_ON" RC2_DBG_ROLE="auditor" RC2_DBG_MODEL="$DMODEL" RC2_DBG_SYS="$SYS" \
+       RC2_DBG_HIST="$HIST" RC2_DBG_MAX="$DMAX" RC2_DBG_POLL="$DPOLL" RC2_DBG_DIGEST_FN="build_auditor_debate_digest"
+RC2_DBG_LEADIN_OPEN="You are OPENING a stuck-debate — you (the EVIDENCE-QUALITY auditor) are calling the SOLVER. You judged a negative it is leaning on to rest on INCONCLUSIVE evidence (the mechanism never spoke). State exactly which negative, cite the log line proving the test never reached the mechanism, and demand either the materially-different attempt that WOULD reach the verdict or an evidence-backed rebuttal. Read raw logs if needed. Output EXACTLY the debate verdict format (DEBATE: CONTINUE, then TO SOLVER:)."
+RC2_DBG_LEADIN_TURN="You are MID-debate with the solver about EVIDENCE QUALITY. Read its latest reply. If it has committed to a materially-different attempt that reaches the mechanism's verdict (or shown its negative really was conclusive), RESOLVE. Otherwise press: name what is still inconclusive and the exact knob to vary. Do not accept a reworded version of the same never-ran test. Output EXACTLY the debate verdict format (DEBATE: CONTINUE|RESOLVED, then TO SOLVER:)."
+export RC2_DBG_LEADIN_OPEN RC2_DBG_LEADIN_TURN
+
+# build_auditor_debate_digest — evidence-focused debate context (the auditor's lens), handed to the critic
+# each turn when the auditor OWNS the debate.
+build_auditor_debate_digest(){
+  local acct="$RUNDIR/logs/accounting.json" round sig
+  rc2_load_target "$RUNDIR" 2>/dev/null || true
+  round="$(jq -r '.debate.round // 1' "$acct" 2>/dev/null)"; round="${round:-1}"
+  sig="$(jq -r '.debate.seed // "(evidence-quality)"' "$acct" 2>/dev/null)"
+  echo "# STUCK-DEBATE (evidence-quality) — the solver is BLOCKED pending this dialogue (round $round/$DMAX)"
+  echo "machine=${machine_name:-$NAME} ip=${target_ip:-?} os=${os_hint:-?} difficulty=${difficulty:-?}"
+  echo
+  echo "## why this debate opened (the auditor's finding)"; echo "  $sig"
+  echo
+  echo "## transcript so far (newest at the bottom)"; sed 's/^/  /' "$RUNDIR/logs/debate.md" 2>/dev/null | tail -120
+  echo
+  echo "## the solver's latest reply (logs/.debate_reply)"
+  if [ -s "$RUNDIR/logs/.debate_reply" ]; then sed 's/^/  /' "$RUNDIR/logs/.debate_reply" 2>/dev/null | head -80; else echo "  (none yet — OPENING turn; name the negative + the log line that proves it never reached the mechanism)"; fi
+  echo
+  echo "## REFUTED / FROZEN hypotheses (the negatives in question)"
+  awk '/^### H[0-9]/{keep=0} /^### H[0-9].*\[status:[[:space:]]*(refuted|frozen)/{keep=1} keep{print}' "$RUNDIR/hypotheses.md" 2>/dev/null | sed 's/^/  /' | head -70
+  echo
+  echo "## recorded negatives (ledger.json — claimed confidence vs tested depth)"
+  jq -r '.negatives[]? | "  - \(.fact)  [conf:\(.confidence // "?") · tested:\(.tested // "?")]"' "$RUNDIR/ledger.json" 2>/dev/null | head -25
+  echo
+  echo "## INCONCLUSIVE-candidate signals in recent results"; _aud_inconclusive_signals
+  echo
+  echo "## worldmodel.md (privilege map + facts)"; sed 's/^/  /' "$RUNDIR/worldmodel.md" 2>/dev/null | head -70
+}
+
 # _aud_inconclusive_signals — scan the recent post results for the signatures of a test that
 # never reached the mechanism (the cheap prefilter the opus pass then adjudicates). Best-effort.
 _aud_inconclusive_signals(){
@@ -138,6 +179,22 @@ assess(){
   new="$(write_auditor "$(printf '_audit #%s · model=%s_\n\n%s' "$rev" "$MODEL" "$verdict")")"
   echo "   ${r:-}MISCLASSIFIED${n:-} (class=$class) → wrote auditor.md (AUDITOR_TICK $new); hook will push the solver to read it"
   printf '%s\n' "$verdict" | sed -n '1,8p' | sed 's/^/   /'
+
+  # S4 escalation. A misclassified high-value negative (premature surrender on a live vector) is serious
+  # enough to warrant the blocking dialogue, not just the push. So:
+  #  - if NO debate is active and debate is enabled, the AUDITOR OPENS ITS OWN (S4), calling the solver and
+  #    becoming its critic — the atomic owner-claim makes this race-free against oversee opening at the same
+  #    instant (one of them wins the claim; the other no-ops).
+  #  - if a debate is ALREADY active and owned by someone else (oversee), fold this finding into that
+  #    debate's transcript as a note (the "group-chat" contribution — evidence into a strategy debate).
+  local vec; vec="$(printf '%s' "$verdict" | grep -oiE '^VECTOR:[[:space:]]*.*' | head -1 | sed 's/^VECTOR:[[:space:]]*//I' | cut -c1-80)"
+  if [ "$DEBATE_ON" = "1" ] && ! rc2_debate_active "$RUNDIR" 2>/dev/null; then
+    rc2_debate_open_if_stuck "S4-inconclusive-negative" "S4 evidence-quality: '${vec:-a refuted vector}' was abandoned on INCONCLUSIVE evidence (class=$class; the mechanism never spoke).${new:+ auditor.md tick $new.}"
+  elif rc2_debate_active "$RUNDIR" 2>/dev/null && [ "$(rc2_debate_owner "$RUNDIR")" != "auditor" ]; then
+    { printf '\n[AUDITOR note · %s]\nevidence-quality (class=%s): %s\n' "$(rc2_utc)" "$class" \
+        "$(printf '%s' "$verdict" | tr '\n' ' ' | cut -c1-500)"; } >> "$RUNDIR/logs/debate.md" 2>/dev/null
+    echo "   ${c:-}contributed finding to the open stuck-debate (owner=$(rc2_debate_owner "$RUNDIR"))${n:-}"
+  fi
 }
 
 echo "${c:-}[auditor]${n:-} watching $RUNDIR  (model=$MODEL interval=${INTERVAL}s)"

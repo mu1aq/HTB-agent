@@ -292,11 +292,76 @@ rc2_burst_guard() {
   return 0
 }
 
+# rc2_debate_gate — the stuck-debate blocking channel (point: a critic↔solver dialogue the solver cannot
+# ignore). When oversee has opened a debate (logs/.debate_turn exists), block every target-acting tool and
+# inject the critic's current message; the solver may only read/research and write its reply + planning
+# files. Returns 2 to BLOCK, 0 to allow (always injecting the message so the dialogue stays in context).
+# Dependency-free on the hot path; fail-open (any read error -> return 0, never wedge the solver).
+rc2_debate_gate() {
+  local turn tool fp round msg injected
+  turn="$(rc2_debate_turn "$cwd")"; [ -n "$turn" ] || return 0
+  # Dead-critic safety valve: if it is the CRITIC's turn (solver waiting) and .debate_turn has not been
+  # touched in RC2_DEBATE_HANG seconds, oversee is gone/stuck — self-release so the solver is never wedged
+  # forever. Only on the critic's turn: a stale SOLVER turn is just the solver thinking (it can always
+  # write its reply to progress), so releasing it would be wrong. Fail-open; mtime-based, no deps.
+  if [ "$turn" = "critic" ]; then
+    local tf="$cwd/logs/.debate_turn" age now mt hang="${RC2_DEBATE_HANG:-1800}"
+    now="$(date +%s 2>/dev/null)"; mt="$(stat -c %Y "$tf" 2>/dev/null)"
+    if [ -n "$now" ] && [ -n "$mt" ]; then age=$((now - mt))
+      if [ "$age" -ge "$hang" ] 2>/dev/null; then
+        rm -f "$cwd/logs/.debate_turn" "$cwd/logs/.debate_msg" "$cwd/logs/.debate_reply" "$cwd/logs/.debate_owner" 2>/dev/null
+        rc2_json_update "$ACCT" '.debate.active=false | .debate.outcome="stalled"' 2>/dev/null
+        echo "redcat2 debate: the critic has been unresponsive for ${age}s (>${hang}s) — the debate channel is RELEASED so you are not wedged. Follow the last critique in logs/debate.md, pick the highest-value UNTESTED lever, and proceed." >&2
+        return 0
+      fi
+    fi
+  fi
+  tool="$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null)"
+  fp="$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""' 2>/dev/null)"
+  round="$(jq -r '.debate.round // 1' "$ACCT" 2>/dev/null)"; round="${round:-1}"
+  msg="$(cut -c1-4000 "$cwd/logs/.debate_msg" 2>/dev/null)"
+  local who; who="$(rc2_debate_owner "$cwd")"; case "$who" in
+    oversee) who="the oversee critic (strategy)";; auditor) who="the auditor critic (evidence quality)";; *) who="an operator-level critic";; esac
+  local bar="════════════════════════════════════════════════════════════"
+  if rc2_debate_allowed "$turn" "$tool" "$fp"; then
+    injected="$(jq -r '.debate.injected_round // -1' "$ACCT" 2>/dev/null)"
+    if [ "$turn" = "solver" ] && [ "$injected" != "$round" ]; then
+      { echo "$bar"
+        echo "redcat2 STUCK-DEBATE — round $round/${RC2_DEBATE_MAX_ROUNDS:-6} (YOUR TURN). $who has BLOCKED target actions because you appear stuck. This is a DIALOGUE, not an order — agree, push back WITH EVIDENCE, or ask. You cannot act on the target until it resolves."
+        echo "── critic says ──"; printf '%s\n' "$msg"
+        echo "── respond ──"
+        echo "ALLOWED now: Read any file, WebSearch/research, revise worldmodel.md / hypotheses.md."
+        echo "REQUIRED: write your reply (evidence-backed rebuttal, a question, or your revised plan) to logs/.debate_reply with the Write tool, then STOP — the critic answers within ~${RC2_DEBATE_POLL:-30}s. Up to ${RC2_DEBATE_MAX_ROUNDS:-6} rounds; it ends with RESOLVED or a final decision (new SUPERVISOR_TICK). Transcript: logs/debate.md."
+        echo "$bar"
+      } >&2
+      rc2_json_update "$ACCT" '.debate.injected_round=$r' --argjson r "${round:-1}"
+    elif [ "$turn" = "critic" ]; then
+      echo "redcat2 debate [round $round]: your reply is in — the critic is reviewing (BLOCKED ~${RC2_DEBATE_POLL:-30}s). You may Read/think only; do not spin." >&2
+    fi
+    return 0
+  fi
+  { echo "$bar"
+    echo "redcat2 STUCK-DEBATE [BLOCKED] — round $round/${RC2_DEBATE_MAX_ROUNDS:-6}: '$tool' is not permitted mid-debate."
+    if [ "$turn" = "solver" ]; then
+      echo "── critic says ──"; printf '%s\n' "$msg"
+      echo "Respond FIRST: write your reply to logs/.debate_reply (Write tool). You may Read/WebSearch/revise worldmodel.md+hypotheses.md meanwhile — nothing else until the critic resolves this."
+    else
+      echo "It is the critic's turn — you already replied. Wait (~${RC2_DEBATE_POLL:-30}s); Read/think only until it answers."
+    fi
+    echo "Transcript: logs/debate.md."
+    echo "$bar"
+  } >&2
+  return 2
+}
+
 if [ "$phase" = "pre" ]; then
   printf '%s' "$input" | jq -c --arg ts "$ts" \
       '{ts:$ts, event:"pre", tool:(.tool_name // "?"),
         command:(.tool_input.command // null), input:.tool_input}' \
       >> "$jsonl" 2>/dev/null
+
+  # stuck-debate gate FIRST: while a debate is open nothing else may run against the target. Fail-open.
+  rc2_debate_gate; dgc=$?; [ "${dgc:-0}" -eq 2 ] && exit 2
   cmd="$(printf '%s' "$input" | jq -r 'select(.tool_name=="Bash") | .tool_input.command // empty' 2>/dev/null)"
   if is_guarded "$cmd"; then
     ch="$(printf '%s' "$cmd" | tr -s ' \t' ' ' | md5sum | cut -c1-16)"
@@ -361,6 +426,17 @@ printf '%s' "$input" | jq -c --arg ts "$ts" --arg of "$outfile" --arg b "${bytes
       exit:(.tool_response.exit_code // .tool_response.returncode // null),
       out_bytes:($b|tonumber), out_file:$of}' \
   >> "$jsonl" 2>/dev/null
+
+# stuck-debate: the solver writing its reply file hands the turn back to the critic (the sanctioned
+# "I'm done, here is my argument" signal). Dependency-free; fail-open — a missed flip just means oversee
+# waits one more poll. Only flips solver->critic; oversee owns critic->solver and the close.
+if [ "$(rc2_debate_turn "$cwd")" = "solver" ]; then
+  rtool="$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null)"
+  rfp="$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""' 2>/dev/null)"
+  case "$rtool" in
+    Write|Edit|MultiEdit) case "$rfp" in */.debate_reply|.debate_reply) printf 'critic' > "$cwd/logs/.debate_turn" 2>/dev/null ;; esac ;;
+  esac
+fi
 
 # P1 progress signal (G1: "evidence movement", not just worldmodel) — composite of worldmodel.md
 # content + confirmed_path length + loot file count. Any of them moving = progress -> stamp it, which

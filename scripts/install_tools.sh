@@ -312,6 +312,32 @@ ensure_crackstation() {
   fi
 }
 
+# BloodHound CE deployment manager (SpecterOps `bloodhound-cli`): manages the BHCE docker
+# stack (neo4j + postgres + web UI) — `install`, `up`/`down`, `resetpwd`, etc. Distributed as a
+# GitHub release binary (not apt/pipx/go-install), so we register an existing copy onto PATH and
+# only download the release if no copy exists. Binary you type: `bloodhound-cli`.
+ensure_bloodhound_cli() {
+  have bloodhound-cli && { c_skip "bloodhound-cli (present: $(command -v bloodhound-cli))"; return; }
+  local bindir; bindir="$(detect_bindir)"; mkdir -p "$bindir"
+  # reuse an already-installed copy (e.g. hand-installed under files_etc) before downloading
+  local found; found="$(find "$FILES_ETC" "$OPT_DIR" "$HOME" -maxdepth 4 -type f -name bloodhound-cli 2>/dev/null | head -1)"
+  if [ -n "$found" ]; then
+    chmod +x "$found" 2>/dev/null
+    ln -sf "$found" "$bindir/bloodhound-cli" && c_ok "bloodhound-cli linked ($found)" || c_fail "bloodhound-cli symlink"
+    return
+  fi
+  local dest="$FILES_ETC/bloodhound-cli" tb; mkdir -p "$dest"; tb="$dest/bloodhound-cli.tar.gz"
+  c_info "fetching bloodhound-cli (SpecterOps BHCE) → $dest"
+  if curl -fsSL --retry 3 -o "$tb" \
+       https://github.com/SpecterOps/bloodhound-cli/releases/latest/download/bloodhound-cli-linux-amd64.tar.gz 2>/dev/null \
+     && tar -xzf "$tb" -C "$dest" 2>/dev/null && [ -f "$dest/bloodhound-cli" ]; then
+    rm -f "$tb"; chmod +x "$dest/bloodhound-cli"
+    ln -sf "$dest/bloodhound-cli" "$bindir/bloodhound-cli" && c_ok "bloodhound-cli → $bindir" || c_fail "bloodhound-cli symlink"
+  else
+    rm -f "$tb"; c_fail "bloodhound-cli download (install manually: github.com/SpecterOps/bloodhound-cli/releases)"
+  fi
+}
+
 # ---- verification ----------------------------------------------------------------
 
 # binary names to probe (what you actually type), mapped from the inventory above
@@ -320,7 +346,7 @@ VERIFY=(
   gobuster ffuf feroxbuster wfuzz nikto whatweb wpscan nuclei sqlmap
   smbclient smbmap enum4linux-ng ldapsearch responder mitm6 netexec crackmapexec
   impacket-secretsdump impacket-GetUserSPNs impacket-getTGT evil-winrm bloodhound-python neo4j
-  certipy-ad bloodyad kerbrute cloudfox
+  certipy-ad bloodyad kerbrute cloudfox bloodhound-cli
   msfconsole searchsploit hydra chisel proxychains4 socat nc openvpn sshpass
   rev showmount linpeas.sh pspy hashcat john hashid
   aws az s3scanner scout prowler
@@ -374,6 +400,7 @@ main() {
     ensure_seclists
     ensure_files_etc_repos          # curated extra repos → files_etc (incl. team-referenced)
     ensure_crackstation             # CrackStation crack dictionary → files_etc/wordlists
+    ensure_bloodhound_cli           # BloodHound CE deployment manager (SpecterOps) → PATH
   else
     c_skip "CORE mode — skipping pipx / go / git / SecLists / files_etc (run 'max' for those)"
   fi

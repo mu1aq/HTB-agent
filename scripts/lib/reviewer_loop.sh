@@ -14,6 +14,7 @@
 
 # repo root resolved from THIS file (robust regardless of which sidecar sourced it)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; . "$ROOT/lib/common.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/debate.sh"   # shared stuck-debate driver (both sidecars; see note there)
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 unset ANTHROPIC_API_KEY
 : "${CLAUDE_CODE_OAUTH_TOKEN:?set CLAUDE_CODE_OAUTH_TOKEN in .env}"
@@ -57,16 +58,25 @@ rc2_reviewer_call(){
 $(cat)" --model "$1" --append-system-prompt "$(cat "$2")" --allowedTools "Read Glob Grep" 2>&1
 }
 
-# rc2_reviewer_mainloop <rundir> <interval> <assess_fn> <label> — activity-gated loop: each tick, if
-# tools.jsonl grew since last tick call `<assess_fn> <n>`, else skip (saves tokens). ONESHOT=1 runs one
-# pass then returns. Exits on logs/.stop so the sidecar ends with the hunt even if started standalone.
+# rc2_reviewer_mainloop <rundir> <interval> <assess_fn> <label> — activity-gated loop, now DEBATE-AWARE:
+#  - While a stuck-debate is open, poll TIGHT (RC2_DBG_POLL) and call rc2_debate_service each tick (a no-op
+#    unless THIS sidecar owns the debate and it is the critic's turn) — so a debate's turns feel live and
+#    the normal (expensive) review is suspended for its duration.
+#  - Otherwise: each tick, if tools.jsonl grew since last tick call `<assess_fn> <n>`, else skip (saves
+#    tokens); then, if the sidecar defines `rc2_sidecar_stuck_check`, call it (it may OPEN a debate).
+#  ONESHOT=1 runs one assess pass then returns. Exits on logs/.stop so the sidecar ends with the hunt.
 rc2_reviewer_mainloop(){
   local rundir="$1" interval="$2" fn="$3" label="${4:-review}" tick=0 last_lines=-1 cur_lines
   if [ "${ONESHOT:-}" = "1" ]; then "$fn" 1; return 0; fi
   while [ ! -f "$rundir/logs/.stop" ]; do
+    if rc2_debate_active "$rundir"; then
+      rc2_debate_service 2>/dev/null || true     # drive one turn iff I own it + critic's turn; else no-op
+      sleep "${RC2_DBG_POLL:-${RC2_DEBATE_POLL:-30}}"; continue
+    fi
     cur_lines="$(wc -l < "$rundir/logs/tools.jsonl" 2>/dev/null | tr -d ' ')"; cur_lines="${cur_lines:-0}"
     if [ "$cur_lines" != "$last_lines" ]; then tick=$((tick+1)); "$fn" "$tick"; last_lines="$cur_lines"
     else echo "${d:-}[$label] no new tool activity — holding (tick skipped, saves tokens)${n:-}"; fi
+    if [ "$(type -t rc2_sidecar_stuck_check 2>/dev/null)" = "function" ]; then rc2_sidecar_stuck_check || true; fi
     sleep "$interval"
   done
 }

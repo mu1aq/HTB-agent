@@ -21,6 +21,16 @@ _rc2_submit_flag() {
   local rundir="$1" kind="$2" val="$3" sub="$1/logs/.submitted" log="$1/logs/flag_submit.log"
   grep -qiE "^${kind}$" "$sub" 2>/dev/null && return 0              # this kind already owned/accepted
   grep -qiE "^${kind}:bad:${val}$" "$sub" 2>/dev/null && return 0   # this exact value already rejected — don't hammer the API
+  # INTEGRITY: user.txt and root.txt are NEVER equal on HTB. Refuse to submit a value that equals the OTHER
+  # kind's captured value — a mis-written flags.txt (e.g. root=<the user hash>) would otherwise be ACCEPTED
+  # by the API (it IS a valid flag for the box) and FALSELY mark this kind owned. The correct flag still
+  # arrives via the enforced channel (a logged user.txt/root.txt read). Observed on a real run: root==user.
+  local _other; [ "$kind" = root ] && _other="$(rc2_flag_value user "$rundir")" || _other="$(rc2_flag_value root "$rundir")"
+  if [ -n "$_other" ] && [ "$val" = "$_other" ]; then
+    printf '%s REFUSE %s=%s — equals the %s flag (user==root is impossible on HTB; likely a mis-written flags.txt). Not submitting; the real %s comes from the logged %s.txt read.\n' \
+      "$(rc2_utc)" "$kind" "$val" "$([ "$kind" = root ] && echo user || echo root)" "$kind" "$kind" >> "$log"
+    return 0
+  fi
   local stamp resp msg; stamp="$(rc2_utc)"
   resp="$(htb_submit_flag "$machine_id" "$val" 2>/dev/null)"
   msg="$(printf '%s' "$resp" | jq -r '.message // .status // .' 2>/dev/null | head -1)"

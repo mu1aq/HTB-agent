@@ -227,18 +227,31 @@ A third, subtler one surfaced later:
       transport/tooling -- a test that never ran)?" On a mismatch -> auditor.md, and
       the HOOK pushes the solver to read it (warn -> exit-2 block, self-clearing on read).
 
+  [ STUCK-DEBATE ]    debate.sh (oversee|auditor) + the HOOK  -- SYNCHRONOUS, opus   (FM1+FM2)
+      the only BLOCKING, two-way layer. When a stuck SIGNAL fires (S1 gap-stagnation /
+      S2 surface-grind / S3 research-drought [oversee] or S4 inconclusive-negative
+      [auditor]) a critic opens a turn-based dialogue; the HOOK refuses every
+      target-acting tool (exit 2) and lets the solver only read/research/revise/REPLY.
+      Up to RC2_DEBATE_MAX_ROUNDS exchanges, the solver may rebut with evidence, then the
+      critic forces a decision -> SUPERVISOR_TICK. Opener atomically claims ownership.
+
   FM1 = over-grind | FM2 = premature surrender | FM2' = premature surrender on an
   INCONCLUSIVE negative (mid-run, finer-grained than the clean-exit surrender gate) |
   FM3 = confirmation grinding
 ```
 
-Why five layers, not one: they act at **different granularities and cadences** - per-call (hook),
-per-stall (watcher), per-review (oversee), per-surrender (gate), per-cycle evidence-audit (auditor) -
-and against **opposite** failures. A single mechanism cannot be both "stop drilling" and "don't give up".
+Why six layers, not one: they act at **different granularities and cadences** - per-call (hook),
+per-stall (watcher), per-review (oversee), per-surrender (gate), per-cycle evidence-audit (auditor),
+and per-stuck-signal synchronous dialogue (debate) - and against **opposite** failures. A single
+mechanism cannot be both "stop drilling" and "don't give up".
 FM2 and FM2' are the same failure (premature surrender) at two depths: the surrender gate catches it only
 when the solver clean-exits; the auditor catches the *second-order* version -
 a vector correctly seen as LIVE, then refuted at high confidence on a test that never reached the
-mechanism - mid-run, before it hardens into a blocker.
+mechanism - mid-run, before it hardens into a blocker. The **stuck-debate** is orthogonal to all five:
+every other layer is *advisory or one-way* (a note, a freeze, a tightened level the solver can still
+work around by switching); the debate is the one that **halts the solver and makes it answer**, for the
+case the advisory channels demonstrably cannot stop - a solver measurably losing while every note is
+ignored. See §4.7.
 
 ### 4.3 The two-tier switch - who controls enforcement
 
@@ -282,7 +295,14 @@ enforces on are different files.**
       per_hypothesis{spent,repeat_count,last_action_fp}    progress{last_progress_*}
       arbiter_freezes{H}   freeze_candidate   consumed_overrides[]
       supervisor{consecutive_rabbit_hole, gated, last_contradiction_fp, ...}
+      debate{active, owner, with, round, signal, seed, injected_round, errors,
+             opened_exp, last_close_exp, outcome}   <-- §4.7; owner/with name both roles
 ```
+
+The debate's *live* turn state is NOT in accounting - it is in plain files (`logs/.debate_turn`,
+`.debate_owner`, `.debate_msg`, `.debate_reply`) so the **hook reads it without `jq`**, per the R11
+state-location convention. accounting.json holds only the structured round/outcome bookkeeping the
+sidecars manage.
 
 Why split them: a malformed hand-edit by the solver can corrupt *its* ledger but can **never** corrupt
 the counters enforcement rests on, and an arbiter freeze lives in the hook-owned file so the solver
@@ -339,9 +359,77 @@ Four mechanisms tie the guard to the solver's reasoning:
 | `AUDITOR_NUDGE_ESCALATE` | `3` | hook push warns N× for a new `auditor.md` finding, then exit-2 blocks until read |
 | `RC2_UNTESTABLE_MAX` | `4` | materially-different inconclusive attempts on one vector before it is parked `untestable` (not refuted) |
 | `RC2_SURFACE_TIER2` / `RC2_SURFACE_TIER2_MODEL` | `0` / `haiku` | opt-in Tier-2 inferred-surface labeler (`surface_label.sh`); Tier-1 hook always on |
+| `RC2_DEBATE` | `0` | `1` = enable the stuck-debate even with the guard off (else rides the guard core) |
+| `RC2_DEBATE_MAX_ROUNDS` / `RC2_DEBATE_POLL` | `6` / `30` | round cap before a forced decision / the owning critic's poll cadence (s) while open |
+| `RC2_DEBATE_MODEL` | `opus` | the critic model in a debate (capped at 4.8) |
+| `RC2_DEBATE_STALL_T` / `_SURFACE_N` / `_DROUGHT_M` | `40` / `60` / `15` | S1 / S2 / S3 trigger thresholds — **placeholders, not yet eval-calibrated** |
+| `RC2_DEBATE_COOLDOWN` / `RC2_DEBATE_HANG` | `25` / `1800` | post-close cooldown (experiments) / dead-critic auto-release (s) |
+| `NO_DEBATE` | `0` | `1` = force the stuck-debate off even with the guard on |
 
 All calibration defaults live in **one place** - `lib/env.sh`. `RC2_GUARD`/`RC2_GATE`/`RC2_GUARD_WATCH`
 are read at point of use (operator intent, not defaults).
+
+### 4.7 The stuck-debate - the one synchronous, blocking layer
+
+Every other guard layer is **advisory or one-way**: the hook warns, the watcher freezes a hypothesis
+(the solver can switch to another), oversee writes a note, the auditor pushes a note. A solver that is
+*measurably losing* can ride through all of them - the canonical failure (DarkZeroReturns: perfect
+infra, 49 sub-agent delegations, three sessions, and still no root) was a **judgement** failure the
+advisory channels never halted. The debate is the answer to exactly that: the only layer that **stops
+the solver and makes it answer**, turning the one-way note into a two-way dialogue.
+
+**Why a dialogue, not a stronger order.** The critic can be wrong. A one-way "this surface is dead,
+switch" that happens to be mistaken *prunes the real path* - the very FM2 failure the system fights
+elsewhere. So the debate lets the solver **rebut with evidence** and the critic **concede** (`RESOLVED`).
+Bare assertion does not end it (that would just be the solver talking its way out); evidence or a sound
+revised plan does. It is capped (`RC2_DEBATE_MAX_ROUNDS`, default 6) so it converges - at the cap the
+critic's latest critique is forced into a binding `SUPERVISOR_TICK`.
+
+**Detection: a cheap prefilter + a context-aware judge, not a fixed number.** "Is the solver stuck?" is
+context-dependent - 40 experiments with no closed hop is a rabbit hole on an Easy box and normal deep
+enumeration on an Insane forest mid-pivot. A single threshold is context-blind and would misfire on exactly
+those exceptions. So the thresholds (`RC2_DEBATE_STALL_T/_SURFACE_N/_DROUGHT_M`) are only a **prefilter**:
+they decide *worth asking*, cheaply and deterministically (and reset on any progress). When one trips, the
+decision to actually open is made by the **critic** reading the real evidence - it can decline with
+`DEBATE: PASS` (a false positive: legitimately deep work, a long scan, an advancing chain). This is the
+same hybrid the sameness judge uses (cheap `RC2_STALL` prefilter → model SAME/VARYING call) and it has two
+nice properties: (1) the exact threshold value stops being load-bearing - it only gates *whether to ask*,
+so the "uncalibrated numbers" risk shrinks and the prefilter can be set fairly sensitive; (2) **no extra
+model call** - the gate is folded into the opening-critic call that was going to happen anyway (the critic
+either PASSes or opens with its critique, in one opus turn). A PASS sets the post-close cooldown so a
+still-tripped prefilter does not re-ask every tick. The auditor's S4 trigger needs no PASS gate - it is
+*already* a model judgement (the misclassified audit), so it opens directly.
+
+**Why file+hook, not `SendMessage`.** A `claude -p` headless session does not poll for messages mid-run,
+so two sessions cannot hold a live `SendMessage` conversation (one side always blocks unread). The debate
+instead rides the existing infrastructure: the **hook** (which runs on *every* tool call) is the delivery
+and enforcement mechanism - it injects the critic's message into the solver's context and refuses
+target-acting tools (`exit 2`) until the solver replies. The solver's reply is a `Write` to
+`logs/.debate_reply`, which the hook detects in its PostToolUse phase and flips the turn. No new transport,
+no new session; the blocking property falls out of the hook's existing `exit 2` contract.
+
+**Two initiators, one owner - the race.** Both reviewer sidecars can detect "stuck" independently
+(oversee on strategy signals S1/S2/S3, the auditor on the evidence signal S4) and either can be the first
+to call a debate. Without coordination, two critics could both open, or both try to drive, the one debate
+the solver sees. The fix is an **atomic ownership claim**: opening does `( set -o noclobber; echo role >
+logs/.debate_owner )`, which the filesystem guarantees exactly one concurrent writer wins. The winner
+becomes the sole critic and records *which role it is* and that it is calling the `solver`
+(`accounting.debate.owner`/`.with`); the loser's claim fails and it backs off (the auditor then folds its
+finding into the open debate as a `[AUDITOR note]` rather than contending for the turn). `rc2_debate_service`
+is a no-op for any sidecar that is not the owner, so only one process ever touches the turn protocol.
+This is why the opener **names the roles in the request** - it is what makes the whole thing race-free.
+
+**Shared driver, role-parameterized.** The open/turn/close logic is one module - `scripts/lib/debate.sh`
+- sourced by both sidecars via `reviewer_loop.sh`; each sets `RC2_DBG_*` globals (role, model, system
+prompt, lead-ins, digest-builder fn, history jsonl) and the shared `rc2_reviewer_mainloop` became
+debate-aware (tight poll + `rc2_debate_service` while a debate is open, the normal activity-gated review
+otherwise, with a `rc2_sidecar_stuck_check` open hook). The solver-side contract lives in
+`doctrine/10-hunt-loop.md` (how to behave when blocked) and `OVERSEER.md`/`AUDITOR.md` (the critic's
+debate rules). **Safety:** stale debate files are cleared at launch (a mid-debate crash never wedges a
+resume - the transcript `debate.md` is kept as memory), and the hook auto-releases the block after
+`RC2_DEBATE_HANG` s if the owning critic dies on its turn. **Status: opt-in, thresholds uncalibrated** -
+the mechanism is wired and self-tested, but the S1/S2/S3 numbers are placeholders pending `eval/`
+(per the "mechanisms stay frozen until the eval shows they help" rule in `eval/README.md`).
 
 ---
 
@@ -358,8 +446,9 @@ are read at point of use (operator intent, not defaults).
   |- status.md          auto snapshot (~600s) - read-only to the agent
   |- target_health.md   auto UP/DOWN/MOVED box signal (rc2_health_watcher) - read-only to the agent
   |- writeup.md         live "Confirmed path" block (above WRITEUP markers) + metrics on exit
-  |- supervisor.md      reviewer verdicts (oversee / surrender gate / contradiction) - tick-gated
+  |- supervisor.md      reviewer verdicts (oversee / surrender gate / contradiction / debate close) - tick-gated
   |- auditor.md         epistemic-auditor findings (inconclusive-as-refuted) - AUDITOR_TICK-gated, hook-pushed
+  |- debate.md          stuck-debate transcript (critic<->solver) - durable memory, reviewer-owned (§4.7)
   |- target.env         sourceable facts (target_ip, machine_id, tmux_base, ...) - rewritten on IP move
   |- recon/ enum/ loot/ exploit/ reversing/ research/ tools/ bin/ notes/   raw evidence
   |- cache/             run-local scratch ONLY (not Claude's config/cache)
@@ -371,12 +460,14 @@ are read at point of use (operator intent, not defaults).
      |- guard.mode        live guard tier (tagged)       .guard_secret   (0600, solver-forbidden)
      |- .flag_mode        live | defer                   .submitted      (flag dedup incl. :bad:)
      |- .stop             watcher stop sentinel          meta.env        (model, start_epoch)
-     `- conv.jsonl  phases.log  flag_submit.log  session_*.log  system_prompt.txt
+     |- .debate_turn      solver|critic (presence=open)  .debate_owner   (oversee|auditor; atomic claim, §4.7)
+     |- .debate_msg       critic->solver message         .debate_reply   (solver->critic reply)
+     `- conv.jsonl  phases.log  flag_submit.log  session_*.log  system_prompt.txt  debate.jsonl(-via sidecar hist)
 ```
 
 Convention worth preserving: **signals the hook must read fast and without `jq` are plain files**
-(`guard.mode`, `.guard_secret`, `.flag_mode`, `.stop`); **structured state read with `jq` is
-`accounting.json`**. Keep new state on that split.
+(`guard.mode`, `.guard_secret`, `.flag_mode`, `.stop`, and the four `.debate_*` files); **structured
+state read with `jq` is `accounting.json`** (incl. its `.debate` bookkeeping). Keep new state on that split.
 
 ---
 
@@ -409,8 +500,8 @@ Convention worth preserving: **signals the hook must read fast and without `jq` 
   hunt                     launcher + resilient loop entry + cleanup/teardown
   lib/
     bootstrap.sh           loader: sets RC2_ROOT, sources the chain
-    guard_lib.sh           dependency-free, hook-safe: rc2_json_update, rc2_guard_tag,
-                           rc2_guard_effective, rc2_mode_rank, rc2_is_frozen, rc2_guard_core_on
+    guard_lib.sh           dependency-free, hook-safe: rc2_json_update, rc2_guard_tag, rc2_guard_effective,
+                           rc2_mode_rank, rc2_is_frozen, rc2_guard_core_on, rc2_debate_{turn,active,owner,allowed}
     common.sh              colors, rc2_utc, rc2_resolve_rundir, rc2_load_target, flag helpers
                            (rc2_flag_value/hex_in/both_flags/both_accepted/solved), rc2_write_supervisor
     tools_log.sh           logs/tools.jsonl readers (rc2_tl_*)
@@ -419,15 +510,19 @@ Convention worth preserving: **signals the hook must read fast and without `jq` 
     run.sh                 scaffold, prompts, rc2_run_loop (+ surrender gate), status writer,
                            rc2_claude_oneshot, rc2_negatives, sameness judge + watcher +
                            contradiction signal + commit_freeze, oversee + auditor launch
-    hook_log.sh            per-call hook: force-log + anti-DoS + P1 accounting/guard + auditor push (sources guard_lib)
+    hook_log.sh            per-call hook: force-log + anti-DoS + P1 accounting/guard + auditor push
+                           + stuck-debate gate (pre-block/inject, post turn-flip) (sources guard_lib)
   scripts/                 watch  agents  oversee  auditor  guard  report  analyze_run  triage  gaps  surface_label  rag  machine  burp  ...
+    lib/reviewer_loop.sh   shared sidecar scaffolding (env/cache, arg-parse, DEBATE-AWARE main loop)
+    lib/debate.sh          shared stuck-debate driver (atomic ownership, open/turn/close) - oversee + auditor (§4.7)
   doctrine/00..60          the brain (system prompt)
   .claude/agents/          researcher  recon-analyst  exploit-dev  verifier  reverser
   OVERSEER.md JUDGE.md SURRENDER.md AUDITOR.md   out-of-band reviewer prompts (NOT in the solver's prompt)
 ```
 
-Out-of-band model calls (`oversee`, `auditor`, sameness judge, surrender gate) all run **outside the repo
-cwd** via `rc2_claude_oneshot` or their own loop script, so no repo-local hook / auto-PR Stop hook fires on them.
+Out-of-band model calls (`oversee`, `auditor`, sameness judge, surrender gate, debate critic) all run
+**outside the repo cwd** via `rc2_claude_oneshot` or their own loop script, so no repo-local hook /
+auto-PR Stop hook fires on them.
 
 ---
 

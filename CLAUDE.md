@@ -187,11 +187,16 @@ tmux is zero-dependency and lives in the agent's shell env, so everything runs o
   (one-shot Kali toolset); `conv_fmt.py` (stream-json renderer); `auto_pr.sh` (optional dev-workflow
   Stop hook — branch→PR→merge, wired from a personal gitignored `.claude/settings.local.json`; not
   part of a hunt). `lib/tools_log.sh` holds the shared `logs/tools.jsonl` readers; `lib/guard_lib.sh`
-  holds the dependency-free guard/JSON helpers shared by the standalone hook and the API.
+  holds the dependency-free guard/JSON helpers shared by the standalone hook and the API (incl. the
+  `rc2_debate_*` readers). The two reviewer sidecars share `scripts/lib/reviewer_loop.sh` (env/cache,
+  arg-parse, the debate-aware main loop) and `scripts/lib/debate.sh` (the stuck-debate driver).
 - **Live state.** `hunt` runs background loops: `rc2_flag_watcher` (submits user/root flags via the HTB
   API through two channels — `flags.txt` and an enforced scan of logged `user.txt`/`root.txt` reads —
   with persistent dedup in `logs/.submitted`, incl. a per-value `kind:bad:<flag>` entry so a rejected
-  flag is not re-hammered; `rc2_htb_owned_init` reads owned-status at launch → `logs/.flag_mode`
+  flag is not re-hammered, and an **integrity guard** that refuses to submit a `root` value equal to the
+  captured `user` value, or vice versa — `user.txt` and `root.txt` are never equal on HTB, so a
+  mis-written `flags.txt` (`root=<user hash>`) would otherwise be *accepted* by the API as a false win;
+  `rc2_htb_owned_init` reads owned-status at launch → `logs/.flag_mode`
   `live` or `defer`-to-end), `rc2_status_writer` (rewrites `status.md` every 600s — flags, phase,
   hypotheses, the guard/ledger line, journal tail, recent tools, tmux, artifacts; also keeps a live
   "Confirmed path" block in `writeup.md`, and writes `recall.md` via `rc2_write_recall` — auto cross-run
@@ -205,8 +210,10 @@ tmux is zero-dependency and lives in the agent's shell env, so everything runs o
   t=0. The HTB spawn/IP wait is 15 tries × 180s = 45 min (`IP_WAIT_TRIES`/`IP_WAIT_INTERVAL`).
 - **Resilient run loop & launch reset.** `rc2_run_loop` guards each `claude -p` attempt with a backgrounded
   `_rc2_attempt_guard`: a terminal **heartbeat** (`RC2_HEARTBEAT`=60s), a **cyber-spin kill** (`RC2_CYBER_SPIN`=10
-  safeguard trips in one session → kill it; a fresh session re-trips the same content), and a **wedge kill**
-  (`RC2_HANG_KILL`=600s with no output). A **usage/token-limit** stop is NOT treated as a crash: the loop
+  safeguard trips in one session → kill it; a fresh session re-trips the same content), a **wedge kill**
+  (`RC2_HANG_KILL`=600s with no output), and a **stop-on-solve** (once `rc2_solved` — both flags present and,
+  in API mode, both accepted — it TERMs the solver so the loop regains control and runs teardown instead of
+  letting a solved solver spin and burn compute). A **usage/token-limit** stop is NOT treated as a crash: the loop
   detects it (`_rc2_log_has_usage_limit`, `RC2_USAGE_LIMIT_RE`) and **backs off `RC2_USAGE_BACKOFF`=1800s then
   resumes from disk without consuming a `MAX_RESTARTS` attempt** (bounded by `RC2_USAGE_MAX_WAITS`=12; the
   backoff wakes early on `logs/.stop`) — the real constraint on a long Insane hunt is the per-window token
@@ -249,6 +256,35 @@ tmux is zero-dependency and lives in the agent's shell env, so everything runs o
   priority, pull via `SUPERVISOR_TICK`); the auditor judges **evidence quality** (conclusiveness, push via
   `AUDITOR_TICK` + the hook). They are deliberately separate channels so "re-prioritize" never blurs with
   "your evidence is inconclusive".
+- **Stuck-debate (opt-in; the one synchronous, blocking channel).** supervisor.md/auditor.md are one-way
+  notes a losing solver can ride through; the **debate** is a blocking, turn-based *dialogue* a critic opens
+  ONLY when the harness measures the solver is stuck — effort without the privilege gap closing: **S1**
+  gap-stagnation (no worldmodel/confirmed-path/loot movement in `RC2_DEBATE_STALL_T` experiments), **S2**
+  surface-grinding (one surface ≥ `RC2_DEBATE_SURFACE_N` calls, no progress), **S3** research-drought
+  (two paths: `RC2_DEBATE_DROUGHT_M` *failures* with no web search since, OR `RC2_DEBATE_DROUGHT_FLOOR`
+  *actions* since ANY research — the latter catches progressing steadily on UNVERIFIED PRIOR knowledge,
+  the subtle DarkZero solve-shape) [oversee], and **S4**
+  a negative resting on inconclusive evidence [auditor]. **The S1/S2/S3 thresholds are only a cheap
+  prefilter** (context-blind — a number can't tell deep enumeration from grinding); when one trips, the
+  critic reads the real evidence and JUDGES whether to open, declining a false positive with `DEBATE: PASS`
+  — the judge is folded into the opening call that happens anyway (no extra model call), and a PASS starts
+  the cooldown. (S4 needs no gate — it is already a model finding.) When it does open: the hook
+  (`rc2_debate_gate`) **blocks** every target-acting tool (`exit 2`) and lets the solver only read/research and write its reply,
+  so the dialogue cannot be ignored; the solver answers in `logs/.debate_reply` (an evidence-backed rebuttal
+  — it **can** push back and be right — a question, or a revised plan), which hands the turn back; up to
+  `RC2_DEBATE_MAX_ROUNDS` (default **6**) exchanges, then the critic forces a decision. Resolution lands as a
+  `SUPERVISOR_TICK`. **Two initiators, one owner (race-free):** EITHER sidecar can be first to call a debate
+  (oversee on S1/S2/S3, auditor on S4); opening is an **atomic ownership claim** (`set -o noclobber` on
+  `logs/.debate_owner`) that records which role it is and that it is calling the `solver`, so two critics can
+  never both drive the one debate — the loser backs off (the auditor instead folds its finding into the open
+  debate as a note). The driver is shared (`scripts/lib/debate.sh`, role-parameterized via `RC2_DBG_*`;
+  `reviewer_loop.sh`'s mainloop is debate-aware). State is plain files (R11): `logs/.debate_turn`
+  solver|critic (presence = open), `logs/.debate_owner` oversee|auditor, `logs/.debate_msg` (critic→solver),
+  `logs/.debate_reply` (solver→critic), `logs/debate.md` (durable transcript). On by `RC2_DEBATE=1` or
+  whenever a guard layer is on; `NO_DEBATE=1` off. Safety valves: a mid-debate crash's stale files are cleared
+  at launch; a dead/unresponsive owning critic auto-releases the block after `RC2_DEBATE_HANG`s. Thresholds
+  are wired but **not yet eval-calibrated** (placeholder defaults in `lib/env.sh`). See
+  `doctrine/10-hunt-loop.md` → stuck-debate, `OVERSEER.md`/`AUDITOR.md` → debate mode, `docs/DEVELOPER.md` §4.7.
 - **Reversing** is export-first (`doctrine/60-reversing.md`): IDA → files under `reversing/`,
   grep locally, query IDA MCP only surgically; gdb runs in a `<tmux_base>_dbg` tmux session,
   launched with a plugin via the on-PATH wrappers `gdb-pwndbg` (default) / `gdb-gef` / `gdb-peda`

@@ -58,11 +58,19 @@ rm -f "$RUNDIR/logs/.stop"
 # already handled — clear it so the push reflects THIS run's auditor only. auditor.md itself is living
 # memory (kept); only the hook's per-run ack/nudge counter is reset.
 rm -f "$RUNDIR/logs/.auditor_nudge"
+# stale stuck-debate state: a crash mid-debate would leave .debate_turn on disk and the hook would BLOCK
+# every tool call on resume with no critic alive to release it. Clear the transient turn/msg/reply files
+# (debate.md transcript is living memory — kept) so .debate_turn means an ACTIVE debate in THIS run only.
+rm -f "$RUNDIR/logs/.debate_turn" "$RUNDIR/logs/.debate_msg" "$RUNDIR/logs/.debate_reply" "$RUNDIR/logs/.debate_owner"
 # accounting.json is seeded only once (resume preserves it), so the operator's launch-env RC2_CEIL/RC2_WARN
 # would be ignored on a re-launch — the hook reads .global.ceiling/.warn_at from the file, not the env.
 # Re-apply them each launch so an operator override takes effect on resume too.
 if [ -s "$RUNDIR/logs/accounting.json" ]; then
-  jq --argjson c "${RC2_CEIL:-800}" --argjson w "${RC2_WARN:-450}" '.global.ceiling=$c | .global.warn_at=$w' \
+  # also force .debate.active=false: the transient debate files were just cleared, so no debate is open
+  # on resume (its cooldown anchor .debate.last_close_exp is preserved). Belt-and-suspenders — the hook
+  # keys off the .debate_turn file, not this flag — but it keeps oversee's view consistent.
+  jq --argjson c "${RC2_CEIL:-800}" --argjson w "${RC2_WARN:-450}" \
+     '.global.ceiling=$c | .global.warn_at=$w | (if .debate then .debate.active=false else . end)' \
      "$RUNDIR/logs/accounting.json" > "$RUNDIR/logs/accounting.json.tmp" 2>/dev/null \
      && mv "$RUNDIR/logs/accounting.json.tmp" "$RUNDIR/logs/accounting.json" 2>/dev/null \
      || rm -f "$RUNDIR/logs/accounting.json.tmp" 2>/dev/null

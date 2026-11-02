@@ -210,6 +210,14 @@ curated narrative *above* the `<!-- WRITEUP -->` block; report.sh preserves ever
 markers and only refreshes between them. If you draw any banner or diagram anywhere, use **emoji**
 (project style), not ASCII box-drawing characters.
 
+`supervisor.md` and `auditor.md` are the reviewer channels (`10` → external supervisor / epistemic
+auditor); you read them, never write them. One more belongs to the supervisor: when it opens a
+**stuck-debate** (`10` → stuck-debate), `logs/debate.md` is the running transcript and `logs/.debate_msg`
+is its current message to you — both reviewer-owned, read-only. The **one** debate file you write is
+`logs/.debate_reply`: your turn in the dialogue (an evidence-backed rebuttal, a question, or your revised
+plan). Writing it hands the turn back to the critic. While a debate is open the hook blocks target
+actions, so `logs/.debate_reply` + revising your own living files is the only way forward until it resolves.
+
 ## Flags
 
 The instant you read a real flag — **before your next action, never batched to the end of the
@@ -221,13 +229,26 @@ auto-records a flag it sees you read from `user.txt`/`root.txt`, but that is onl
 
 ## Resume
 
-A fresh instance (or you, after a context reset) resumes from a fixed **resume kernel** — read only
+A fresh instance (or you, after a context reset) resumes from a fixed **resume kernel** — read
 these, in order: the **top** of `worldmodel.md` → the **ranked** `hypotheses.md` → the **tail** of
 `journal.md` → `ledger.json`'s `confirmed_path` → `flags.txt`. That is enough to know what's held,
-what's next, and what's already ruled out. **Read nothing else to rebuild state** — not `status.md`
-(the operator dashboard just re-states these), not `journal.archive.md` (rolled-over history), not the
-raw `logs/`/`enum/` output — and **do not re-ingest everything** or re-run enumeration already on disk.
-Pulling in those mirrors/archives only re-pays context the kernel already gives you.
+what's next, and what's already ruled out. **Do not re-ingest everything** or re-run enumeration
+already on disk — not `status.md` (the operator dashboard just re-states these), not
+`journal.archive.md` (rolled-over history), not the full `logs/`/`enum/` output.
+
+**Then read the prior session's last moves** — run `scripts/resume_tail.sh 25` (the last 25 tool
+calls, one compact line each). Read this output as a **critical reviewer**, not a follower:
+- What was the previous session doing right before it ended?
+- Did it produce results that the journal hasn't recorded yet?
+- Was it heading in a productive direction, or was it stuck/looping/chasing a dead tool?
+- Should you continue from where it left off, or course-correct?
+
+The tail is raw evidence of what actually happened — the journal is the *intent*, the tail is the
+*execution*. When they diverge (journal says "delegated X" but the tail shows the tool errored and
+never completed), trust the tail. When the tail shows a result the journal missed (a successful
+command whose output was never journaled because the session died), capture that result into the
+journal and worldmodel before moving on. Do NOT blindly resume the prior session's last action —
+evaluate it first.
 
 **Replay your confirmed path — re-walk it, don't re-derive it.** The access you already won is recorded as
 `confirmed_path` (rule 2: `summary` + `how` + `yields`). On resume, **re-establish state by re-executing

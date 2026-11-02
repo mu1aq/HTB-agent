@@ -79,3 +79,9 @@ DO NEXT: <for misclassified only: the materially-different attempt that WOULD re
 ```
 Keep it short and specific: name the hypothesis, the mechanism, the failing log line. Your finding
 is pushed to the solver as "stop and read auditor.md" — make it worth the interrupt.
+
+If a **stuck-debate** is open (the supervisor has blocked the solver for a dialogue), a `misclassified`
+finding of yours is also folded into that debate's transcript automatically, so the strategy critic can
+weigh your evidence-quality point before it resolves. You do not run the debate — you only supply the
+one thing you judge: whether a negative the solver (or the critic) is treating as settled actually rests
+on a mechanism that spoke. Output your normal verdict format either way.
